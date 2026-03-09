@@ -37,13 +37,13 @@ def export_to_csv(
         # Calibration summary
         writer.writerow(["Section", "Key", "Value"])
         if calibration_data:
-            ref_px = calibration_data.get("ref_pixel_dist")
+            ref_raw_px = calibration_data.get("ref_pixel_dist")  # raw pixel output
             ref_mm = calibration_data.get("ref_mm")
-            if ref_px is not None and ref_mm is not None:
-                px_per_mm = ref_px / ref_mm
-                writer.writerow(["Calibration", "reference_pixel_dist", f"{ref_px:.4f}"])
+            if ref_raw_px is not None and ref_mm is not None:
+                px_per_mm = ref_raw_px / ref_mm
+                writer.writerow(["Calibration", "reference_raw_pixels", f"{ref_raw_px:.4f}"])
                 writer.writerow(["Calibration", "reference_mm", f"{ref_mm:.4f}"])
-                writer.writerow(["Calibration", "px_per_mm", f"{px_per_mm:.4f}"])
+                writer.writerow(["Calibration", "raw_pixels_per_mm", f"{px_per_mm:.4f}"])
             if "r_squared" in calibration_data:
                 writer.writerow(
                     ["Calibration", "r_squared", f"{calibration_data['r_squared']:.6f}"]

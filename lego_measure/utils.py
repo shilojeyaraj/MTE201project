@@ -1,18 +1,20 @@
 """
 Shared math utilities for LEGO brick dimension measurement.
 
-All distance and conversion calculations use pure NumPy—no OpenCV or CV libraries.
+Raw pixel output from the measurement device (click coordinates) is used directly
+as input to the calibration equation. No Euclidean or other analytical formulas.
 """
 
 import numpy as np
 
 
-def pixel_distance(p1: tuple, p2: tuple) -> float:
+def raw_pixel_measurement(p1: tuple, p2: tuple, axis: str = "x") -> float:
     """
-    Compute Euclidean distance between two points in pixel space.
+    Raw pixel output from measurement device (two clicked points).
 
-    Formula: d = sqrt((x2-x1)^2 + (y2-y1)^2)
-    This is the 2D Euclidean norm (L2 distance).
+    Returns the coordinate difference along the specified axis—no Euclidean
+    or other analytical formula applied. This raw value is the direct input
+    to the calibration equation.
 
     Parameters
     ----------
@@ -20,47 +22,52 @@ def pixel_distance(p1: tuple, p2: tuple) -> float:
         First point as (x, y) in pixels.
     p2 : tuple
         Second point as (x, y) in pixels.
+    axis : str
+        'x' for horizontal measurement (returns |x2 - x1|),
+        'y' for vertical measurement (returns |y2 - y1|).
 
     Returns
     -------
     float
-        Pixel distance between the two points.
+        Raw pixel span along the measurement axis.
     """
     x1, y1 = p1
     x2, y2 = p2
-    # Vector difference and Euclidean norm via NumPy
-    delta = np.array([x2 - x1, y2 - y1])
-    return float(np.linalg.norm(delta))
+    if axis == "x":
+        return float(abs(x2 - x1))
+    if axis == "y":
+        return float(abs(y2 - y1))
+    raise ValueError("axis must be 'x' or 'y'")
 
 
 def pixel_to_mm(
-    pixel_dist: float, reference_pixel_dist: float, reference_mm: float = 8.0
+    raw_pixels: float, reference_raw_pixels: float, reference_mm: float = 8.0
 ) -> float:
     """
-    Convert a pixel distance to real-world millimetres using a known reference.
+    Calibration equation: convert raw pixel output to real-world millimetres.
 
-    The ratio (pixel_dist / reference_pixel_dist) gives how many "reference units"
-    the unknown span covers. Multiplying by reference_mm yields the real dimension.
+    Uses raw pixel measurements (coordinate deltas) as direct input—no derived
+    quantities. The calibration ratio scales the unknown span to the reference.
 
-    Formula: real_mm = (d_unknown / d_reference) * reference_mm
+    Formula: real_mm = (raw_pixels_unknown / raw_pixels_reference) * reference_mm
 
     Parameters
     ----------
-    pixel_dist : float
-        Pixel distance to convert (the unknown span).
-    reference_pixel_dist : float
-        Pixel distance of the known reference span.
+    raw_pixels : float
+        Raw pixel output for the unknown span (axis-aligned delta).
+    reference_raw_pixels : float
+        Raw pixel output from calibration reference span.
     reference_mm : float
-        Real-world length of the reference in mm (default 8.0 for LEGO stud spacing).
+        Real-world length of reference in mm (default 8.0 for LEGO stud spacing).
 
     Returns
     -------
     float
         Real-world dimension in millimetres.
     """
-    if reference_pixel_dist <= 0:
-        raise ValueError("Reference pixel distance must be positive.")
-    return (pixel_dist / reference_pixel_dist) * reference_mm
+    if reference_raw_pixels <= 0:
+        raise ValueError("Reference raw pixels must be positive.")
+    return (raw_pixels / reference_raw_pixels) * reference_mm
 
 
 def linear_fit(x: np.ndarray, y: np.ndarray) -> tuple:

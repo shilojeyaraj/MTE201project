@@ -49,12 +49,14 @@ def get_image_path() -> str:
 def run_calibration(img_array: np.ndarray) -> tuple:
     """
     Run calibration step. User clicks 2 stud centers (8 mm).
-    Option to redo until satisfied.
+    Raw pixel output (axis-aligned) used as calibration input.
     """
+    axis_choice = input("\nCalibration axis for stud span: horizontal (x) or vertical (y)? [x]: ").strip().lower() or "x"
+    axis = "x" if axis_choice.startswith("x") or axis_choice == "h" else "y"
     fig, ax = plt.subplots(figsize=(10, 8))
-    ref_px, ref_mm, _ = calibrate_single(img_array, ax)
-    px_per_mm = ref_px / ref_mm
-    print(f"\nCalibration result: {ref_px:.1f} px = {ref_mm:.1f} mm  →  {px_per_mm:.2f} px/mm")
+    ref_raw_px, ref_mm, _ = calibrate_single(img_array, ax, axis)
+    raw_px_per_mm = ref_raw_px / ref_mm
+    print(f"\nCalibration: {ref_raw_px:.1f} raw px = {ref_mm:.1f} mm  →  {raw_px_per_mm:.2f} px/mm")
 
     while True:
         choice = input("\nKeep this calibration? (y/n): ").strip().lower()
@@ -62,33 +64,36 @@ def run_calibration(img_array: np.ndarray) -> tuple:
             break
         if choice == "n":
             ax.clear()
-            ref_px, ref_mm, _ = calibrate_single(img_array, ax)
-            px_per_mm = ref_px / ref_mm
-            print(f"New calibration: {ref_px:.1f} px = {ref_mm:.1f} mm  →  {px_per_mm:.2f} px/mm")
+            ref_raw_px, ref_mm, _ = calibrate_single(img_array, ax, axis)
+            raw_px_per_mm = ref_raw_px / ref_mm
+            print(f"New: {ref_raw_px:.1f} raw px = {ref_mm:.1f} mm")
         else:
             print("Please enter y or n.")
 
     plt.close(fig)
-    return (ref_px, ref_mm)
+    return (ref_raw_px, ref_mm, axis)
 
 
 def run_measurements(
-    img_array: np.ndarray, ref_px: float, ref_mm: float
+    img_array: np.ndarray, ref_raw_px: float, ref_mm: float, cal_axis: str
 ) -> list:
     """
-    Run measurement step. User takes multiple measurements with labels.
+    Run measurement step. Raw pixel output feeds calibration equation.
+    Each measurement can use x or y axis.
     """
     measurements = []
     fig, ax = plt.subplots(figsize=(10, 8))
 
     while True:
         print("\n--- New measurement ---")
-        label = input("Label for this dimension (or press Enter to finish): ").strip()
+        label = input("Label (or Enter to finish): ").strip()
         if not label:
             break
+        axis_choice = input("  Axis: horizontal (x) or vertical (y)? [x]: ").strip().lower() or "x"
+        axis = "x" if axis_choice.startswith("x") or axis_choice == "h" else "y"
         try:
             lab, val_mm, _, _ = measure_dimension(
-                img_array, ax, ref_px, ref_mm, label
+                img_array, ax, ref_raw_px, ref_mm, label, axis
             )
             measurements.append((lab, val_mm))
             print(f"  {lab}: {val_mm:.2f} mm")
@@ -128,23 +133,23 @@ def main() -> None:
         print(f"Error: {e}")
         sys.exit(1)
 
-    # 2. Calibration
-    ref_px, ref_mm = run_calibration(img_array)
-    calibration_data = {"ref_pixel_dist": ref_px, "ref_mm": ref_mm}
+    # 2. Calibration (raw pixel output → calibration equation)
+    ref_raw_px, ref_mm, cal_axis = run_calibration(img_array)
+    calibration_data = {"ref_pixel_dist": ref_raw_px, "ref_mm": ref_mm}
 
     # 3. Optional extended calibration (8, 16, 24 mm)
     if input("\nRun extended calibration (3 spans: 8, 16, 24 mm)? (y/n): ").strip().lower() == "y":
         fig, ax = plt.subplots(figsize=(10, 8))
-        px_per_mm = ref_px / ref_mm
-        cal_ext = calibrate_extended(img_array, ax, px_per_mm)
+        raw_px_per_mm = ref_raw_px / ref_mm
+        cal_ext = calibrate_extended(img_array, ax, raw_px_per_mm, cal_axis)
         plt.close(fig)
         calibration_data.update(cal_ext)
         print(f"\nCalibration curve R² = {cal_ext['r_squared']:.4f}")
         plot_calibration_curve(cal_ext)
         plot_deviation(cal_ext)
 
-    # 4. Measurements
-    measurements = run_measurements(img_array, ref_px, ref_mm)
+    # 4. Measurements (raw pixels in, calibration equation out)
+    measurements = run_measurements(img_array, ref_raw_px, ref_mm, cal_axis)
 
     # 5. Results table
     print_results_table(measurements)
