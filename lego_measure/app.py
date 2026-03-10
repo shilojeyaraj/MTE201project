@@ -13,7 +13,9 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-if os.environ.get("BLOB_READ_WRITE_TOKEN"):
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+USE_BLOB = bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
+if ON_VERCEL:
     UPLOAD_FOLDER = Path("/tmp/uploads")
 else:
     UPLOAD_FOLDER = Path(__file__).resolve().parent / "uploads"
@@ -21,7 +23,6 @@ UPLOAD_FOLDER.mkdir(exist_ok=True)
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png"}
-USE_BLOB = bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
 
 
 def allowed_file(filename):
@@ -65,6 +66,9 @@ def upload():
         filepath = Path(app.config["UPLOAD_FOLDER"]) / safe_name
         with open(filepath, "wb") as f:
             f.write(data)
+        if ON_VERCEL:
+            return jsonify({"path": safe_name, "filename": safe_name,
+                            "note": "File saved temporarily. Download before session ends."})
         rel_path = filepath.relative_to(Path(__file__).resolve().parent)
         return jsonify({"path": str(rel_path), "filename": safe_name})
 
