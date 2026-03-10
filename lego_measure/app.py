@@ -13,7 +13,10 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-UPLOAD_FOLDER = Path(__file__).resolve().parent / "uploads"
+if os.environ.get("BLOB_READ_WRITE_TOKEN"):
+    UPLOAD_FOLDER = Path("/tmp/uploads")
+else:
+    UPLOAD_FOLDER = Path(__file__).resolve().parent / "uploads"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
