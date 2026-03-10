@@ -157,25 +157,43 @@ function analyze(img) {
 
   const src    = cv.imread(oc);
   const gray   = new cv.Mat();
+  const eq     = new cv.Mat();
   const blur   = new cv.Mat();
   const circles = new cv.Mat();
 
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, blur, new cv.Size(7, 7), 1.5, 1.5);
+
+  // CLAHE: adaptive contrast enhancement so dark/shadowed studs are detectable
+  const clahe = new cv.CLAHE(3.0, new cv.Size(8, 8));
+  clahe.apply(gray, eq);
+  clahe.delete();
+
+  cv.GaussianBlur(eq, blur, new cv.Size(7, 7), 1.5, 1.5);
 
   const dim    = Math.min(W, H);
   const minR   = Math.max(4, Math.floor(dim * 0.008));
-  const maxR   = Math.floor(dim * 0.09);
-  const minDst = Math.floor(minR * 1.8);
+  const maxR   = Math.floor(dim * 0.10);
+  const minDst = Math.floor(minR * 1.6);
 
   // Try decreasing accumulator thresholds until we find enough circles
   let found = false;
-  for (const p2 of [35, 25, 18, 13]) {
-    cv.HoughCircles(blur, circles, cv.HOUGH_GRADIENT, 1, minDst, 80, p2, minR, maxR);
+  for (const p2 of [30, 22, 15, 10, 7]) {
+    cv.HoughCircles(blur, circles, cv.HOUGH_GRADIENT, 1, minDst, 70, p2, minR, maxR);
     if (circles.cols >= 2) { found = true; break; }
   }
 
-  src.delete(); gray.delete(); blur.delete();
+  // If still not enough, retry with heavier blur (helps with noisy/angled photos)
+  if (!found || circles.cols < 4) {
+    const blur2 = new cv.Mat();
+    cv.GaussianBlur(eq, blur2, new cv.Size(11, 11), 2.5, 2.5);
+    for (const p2 of [20, 13, 9]) {
+      cv.HoughCircles(blur2, circles, cv.HOUGH_GRADIENT, 1, minDst, 60, p2, minR, maxR);
+      if (circles.cols > (found ? circles.cols : 0)) { found = circles.cols >= 2; break; }
+    }
+    blur2.delete();
+  }
+
+  src.delete(); gray.delete(); eq.delete(); blur.delete();
 
   if (!found || circles.cols < 2) {
     circles.delete();
@@ -204,13 +222,24 @@ function analyze(img) {
   const studSpacePx = nnDists[Math.floor(nnDists.length / 2)]; // median
   const pxPerMm    = studSpacePx / 8;
 
-  // Stud grid extent
+  // Stud grid extent — use robust span counting, not just min/max
+  // This handles partial detection: if only some studs in a row are found,
+  // the span in that direction still reflects the true grid size.
   const xs = studs.map(s => s.x), ys = studs.map(s => s.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
 
-  const nX = Math.round((maxX - minX) / studSpacePx) + 1;
-  const nY = Math.round((maxY - minY) / studSpacePx) + 1;
+  // Count distinct rows/columns by clustering positions
+  function countLines(vals, spacing) {
+    const sorted = [...vals].sort((a,b)=>a-b);
+    let lines = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i-1] > spacing * 0.5) lines++;
+    }
+    return lines;
+  }
+  const nX = Math.max(Math.round((maxX - minX) / studSpacePx) + 1, countLines(xs, studSpacePx));
+  const nY = Math.max(Math.round((maxY - minY) / studSpacePx) + 1, countLines(ys, studSpacePx));
 
   // LEGO outer dimensions: n studs → n×8 − 0.2 mm
   const dimA = +(nX * 8 - 0.2).toFixed(1);
