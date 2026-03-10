@@ -8,473 +8,315 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      background: #1a1a2e;
-      color: #eaeaea;
+      background: #1a1a2e; color: #eaeaea;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      display: flex; flex-direction: column; align-items: center;
     }
     .container { width: 100%; max-width: 600px; padding: 1rem; }
-
     h1 { font-size: 1.2rem; margin-bottom: 0.2rem; }
     .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 1rem; }
 
-    /* Step bar */
-    .steps { display: flex; gap: 6px; margin-bottom: 1rem; }
-    .step { flex: 1; height: 4px; border-radius: 2px; background: #2d3748; transition: background 0.3s; }
-    .step.active { background: #ed8936; }
-    .step.done { background: #48bb78; }
-
-    /* Instruction */
-    .instruction {
-      background: #16213e;
-      border-left: 3px solid #ed8936;
-      border-radius: 8px;
-      padding: 0.65rem 0.9rem;
-      margin-bottom: 0.9rem;
-      font-size: 0.88rem;
-      line-height: 1.4;
+    .card {
+      background: #16213e; border-radius: 10px;
+      padding: 0.75rem 1rem; margin-bottom: 0.9rem;
+      border-left: 3px solid #ed8936; font-size: 0.88rem; line-height: 1.5;
     }
-    .instruction.blue  { border-color: #4299e1; }
-    .instruction.green { border-color: #48bb78; }
+    .card.blue  { border-color: #4299e1; }
+    .card.green { border-color: #48bb78; }
 
-    /* Upload zone */
     .upload-zone {
-      border: 2px dashed #4a5568;
-      border-radius: 12px;
-      padding: 2.5rem 1rem;
-      text-align: center;
-      cursor: pointer;
+      border: 2px dashed #4a5568; border-radius: 12px;
+      padding: 2.5rem 1rem; text-align: center; cursor: pointer;
       transition: border-color 0.2s, background 0.2s;
     }
-    .upload-zone:hover, .upload-zone.dragover {
-      border-color: #ed8936;
-      background: rgba(237,137,54,0.08);
-    }
+    .upload-zone:hover, .upload-zone.drag { border-color: #ed8936; background: rgba(237,137,54,.08); }
     .upload-zone input { display: none; }
-    .icon { font-size: 2.5rem; margin-bottom: 0.4rem; }
-    .hint { color: #888; font-size: 0.82rem; margin-top: 0.3rem; }
+    .upload-zone .ico { font-size: 2.5rem; margin-bottom: 0.4rem; }
+    .upload-zone .hint { color: #888; font-size: 0.82rem; margin-top: 0.3rem; }
 
-    /* Canvas */
     .canvas-wrap { display: none; margin-bottom: 0.9rem; }
     canvas { width: 100%; display: block; border-radius: 10px; cursor: crosshair; touch-action: none; }
 
-    /* Buttons */
     .btn {
-      padding: 0.55rem 1rem;
-      border-radius: 7px;
-      border: none;
-      cursor: pointer;
-      font-size: 0.87rem;
-      font-weight: 500;
-      transition: opacity 0.15s;
+      padding: 0.55rem 1.1rem; border-radius: 7px; border: none;
+      cursor: pointer; font-size: 0.88rem; font-weight: 500; transition: opacity .15s;
     }
-    .btn:active { opacity: 0.7; }
-    .btn-orange { background: #ed8936; color: #fff; }
-    .btn-blue   { background: #4299e1; color: #fff; }
-    .btn-green  { background: #48bb78; color: #1a1a2e; }
-    .btn-gray   { background: #2d3748; color: #eaeaea; }
-    .btn-red    { background: #742a2a; color: #feb2b2; }
-    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+    .btn:active { opacity: .7; }
+    .o { background: #ed8936; color: #fff; }
+    .b { background: #4299e1; color: #fff; }
+    .g { background: #48bb78; color: #1a1a2e; }
+    .gr { background: #2d3748; color: #eaeaea; }
+    .btn-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .9rem; }
 
-    /* Label input */
-    .label-row { display: flex; gap: 0.5rem; margin-bottom: 0.9rem; align-items: center; }
-    .label-input {
-      flex: 1;
-      background: #2d3748;
-      border: 1px solid #4a5568;
-      color: #eaeaea;
-      border-radius: 7px;
-      padding: 0.5rem 0.75rem;
-      font-size: 0.87rem;
+    .ref-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .9rem; }
+    .ref-row input {
+      width: 90px; background: #2d3748; border: 1px solid #4a5568;
+      color: #eaeaea; border-radius: 7px; padding: .5rem .6rem; font-size: .9rem; text-align: center;
     }
-    .label-input:focus { outline: none; border-color: #4299e1; }
+    .ref-row input:focus { outline: none; border-color: #4299e1; }
+    .ref-row span { color: #888; font-size: .88rem; }
 
-    /* Results */
-    .results { background: #16213e; border-radius: 10px; overflow: hidden; margin-bottom: 0.9rem; }
-    .results table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    .results th { background: #2d3748; padding: 0.5rem 0.75rem; text-align: left; }
-    .results td { padding: 0.45rem 0.75rem; border-top: 1px solid #2d3748; }
-    .val { font-weight: 700; color: #48bb78; font-size: 0.97rem; }
-    .del { background: none; border: none; color: #888; cursor: pointer; font-size: 1rem; padding: 0 0.25rem; }
-    .del:hover { color: #fc8181; }
-
-    /* Export row */
-    .export-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    /* Plain text results */
+    .results-box {
+      background: #16213e; border-radius: 10px;
+      padding: 1rem 1.25rem; margin-bottom: .9rem;
+      font-size: 1rem; line-height: 1.9; display: none;
+    }
+    .results-box .dim-line { display: flex; justify-content: space-between; align-items: center; }
+    .results-box .dim-name { color: #aaa; }
+    .results-box .dim-val  { color: #48bb78; font-weight: 700; font-size: 1.1rem; }
+    .results-box .dim-del  { background: none; border: none; color: #555; cursor: pointer; font-size: 1rem; padding: 0 .2rem; }
+    .results-box .dim-del:hover { color: #fc8181; }
+    .results-box hr { border: none; border-top: 1px solid #2d3748; margin: .5rem 0; }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>LEGO Brick Measurer</h1>
-  <p class="subtitle">Photo → calibrate → measure → results</p>
+  <p class="subtitle">Upload photo → set scale → click edges → get dimensions</p>
 
-  <div class="steps">
-    <div class="step" id="s1"></div>
-    <div class="step" id="s2"></div>
-    <div class="step" id="s3"></div>
+  <div class="card" id="inst">
+    Take a straight top-down photo (studs up) and upload it.
   </div>
 
-  <div class="instruction" id="inst">
-    Take a photo directly overhead (top-down, studs facing up) and upload it below.
+  <div class="upload-zone" id="zone" onclick="document.getElementById('fi').click()">
+    <input type="file" id="fi" accept="image/*">
+    <div class="ico">📷</div>
+    <div>Tap to take or select a photo</div>
+    <div class="hint">Shoot straight down · JPG or PNG</div>
   </div>
 
-  <!-- Step 1: upload -->
-  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
-    <input type="file" id="fileInput" accept="image/*">
-    <div class="icon">📷</div>
-    <div>Tap to take or choose a photo</div>
-    <div class="hint">Shoot straight down, studs facing up · JPG or PNG</div>
+  <div class="canvas-wrap" id="cw"><canvas id="cv"></canvas></div>
+
+  <!-- Reference mm input (shown after 2 calibration points clicked) -->
+  <div class="ref-row" id="refRow" style="display:none">
+    <input type="number" id="refMm" placeholder="mm" min="1" max="999">
+    <span>mm between those two points</span>
+    <button class="btn o" onclick="setRef()">Set</button>
   </div>
 
-  <!-- Steps 2–3: canvas -->
-  <div class="canvas-wrap" id="canvasWrap">
-    <canvas id="canvas"></canvas>
-  </div>
-
-  <!-- Action buttons -->
   <div class="btn-row" id="btnRow" style="display:none"></div>
 
-  <!-- Label entry (shown when adding custom or preset measurement) -->
-  <div class="label-row" id="labelRow" style="display:none">
-    <input type="text" class="label-input" id="labelInput" placeholder="e.g. Length, Width, Height">
-    <button class="btn btn-blue" onclick="confirmLabel()">Start</button>
-  </div>
+  <!-- Results -->
+  <div class="results-box" id="res"></div>
 
-  <!-- Results table -->
-  <div class="results" id="resultsWrap" style="display:none">
-    <table>
-      <thead><tr><th>Dimension</th><th>Result</th><th></th></tr></thead>
-      <tbody id="resultsBody"></tbody>
-    </table>
-  </div>
-
-  <!-- Export -->
-  <div class="export-row" id="exportRow" style="display:none">
-    <button class="btn btn-green" onclick="exportCSV()">Export CSV</button>
-    <button class="btn btn-gray"  onclick="resetAll()">Start over</button>
+  <div class="btn-row" id="bottomRow" style="display:none">
+    <button class="btn gr" onclick="resetAll()">Start over</button>
   </div>
 </div>
 
 <script>
 const STUD_MM = 8;
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
 
 const S = {
-  phase: 'upload',      // upload | calibrate | awaiting-label | measure
-  img: null,
-  scale: 1,
-  pxPerMm: null,
-  calibPts: [],
-  measurements: [],
-  pendingPts: [],
+  phase: 'upload',   // upload | calib | ref | measure
+  img: null, scale: 1, pxPerMm: null,
+  refPts: [],
+  measures: [],      // [{label, p1, p2, mm}]
+  pending: [],       // points for current measurement
   pendingLabel: '',
 };
 
-// ── Geometry ─────────────────────────────────────────────────────────────────
-
-function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-// ── Canvas setup ──────────────────────────────────────────────────────────────
-
-const canvas = document.getElementById('canvas');
-const ctx    = canvas.getContext('2d');
-
-function loadImage(file) {
+// ── File loading ──────────────────────────────────────────────────────────────
+function loadFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const img = new Image();
   img.onload = () => {
     S.img = img;
     const maxW = Math.min(568, document.querySelector('.container').clientWidth);
     S.scale = maxW / img.naturalWidth;
-    canvas.width  = img.naturalWidth  * S.scale;
-    canvas.height = img.naturalHeight * S.scale;
-    document.getElementById('uploadZone').style.display = 'none';
-    document.getElementById('canvasWrap').style.display = 'block';
-    enterCalibrate();
+    cv.width  = img.naturalWidth  * S.scale;
+    cv.height = img.naturalHeight * S.scale;
+    document.getElementById('zone').style.display = 'none';
+    document.getElementById('cw').style.display   = 'block';
+    enterCalib();
   };
   img.src = URL.createObjectURL(file);
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
+const PALETTE = ['#4299e1','#68d391','#f6ad55','#fc8181','#b794f4','#76e4f7'];
 
 function redraw() {
   if (!S.img) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(S.img, 0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(S.img, 0, 0, cv.width, cv.height);
 
-  const DOT_R = Math.max(7, canvas.width * 0.013);
-  const LINE_W = Math.max(2.5, canvas.width * 0.005);
+  const R  = Math.max(7, cv.width * 0.013);
+  const LW = Math.max(2.5, cv.width * 0.005);
 
-  function dot(p, color) {
-    ctx.beginPath();
-    ctx.arc(p.x * S.scale, p.y * S.scale, DOT_R, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+  function dot(p, col) {
+    const x = p.x * S.scale, y = p.y * S.scale;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
   }
-
-  function line(a, b, color) {
+  function line(a, b, col) {
     ctx.beginPath();
-    ctx.moveTo(a.x * S.scale, a.y * S.scale);
-    ctx.lineTo(b.x * S.scale, b.y * S.scale);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = LINE_W;
-    ctx.stroke();
+    ctx.moveTo(a.x*S.scale, a.y*S.scale);
+    ctx.lineTo(b.x*S.scale, b.y*S.scale);
+    ctx.strokeStyle = col; ctx.lineWidth = LW; ctx.stroke();
   }
-
-  function label(a, b, text, color) {
-    const mx = (a.x + b.x) / 2 * S.scale;
-    const my = (a.y + b.y) / 2 * S.scale;
-    const fs = Math.max(13, canvas.width * 0.027);
+  function badge(a, b, text, col) {
+    const mx = (a.x+b.x)/2*S.scale, my = (a.y+b.y)/2*S.scale;
+    const fs = Math.max(12, cv.width*0.026);
     ctx.font = `bold ${fs}px system-ui`;
     const tw = ctx.measureText(text).width;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.beginPath();
-    ctx.roundRect(mx - tw/2 - 5, my - fs - 4, tw + 10, fs + 8, 4);
-    ctx.fill();
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(text, mx, my + 2);
+    ctx.fillStyle = 'rgba(0,0,0,.65)';
+    ctx.beginPath(); ctx.roundRect(mx-tw/2-5, my-fs-4, tw+10, fs+8, 4); ctx.fill();
+    ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(text, mx, my+2);
   }
 
-  // Calibration
-  const COLORS = ['#4299e1','#68d391','#f6ad55','#fc8181','#b794f4','#76e4f7'];
-  if (S.calibPts[0]) dot(S.calibPts[0], '#ed8936');
-  if (S.calibPts[1]) {
-    dot(S.calibPts[1], '#ed8936');
-    line(S.calibPts[0], S.calibPts[1], '#ed8936');
-    label(S.calibPts[0], S.calibPts[1], '8 mm (ref)', '#ed8936');
+  // Calibration points
+  S.refPts.forEach(p => dot(p, '#ed8936'));
+  if (S.refPts.length === 2) {
+    line(S.refPts[0], S.refPts[1], '#ed8936');
+    if (S.pxPerMm) badge(S.refPts[0], S.refPts[1], 'scale ref', '#ed8936');
   }
 
   // Completed measurements
-  S.measurements.forEach((m, i) => {
-    const c = COLORS[i % COLORS.length];
-    dot(m.p1, c); dot(m.p2, c);
-    line(m.p1, m.p2, c);
-    label(m.p1, m.p2, `${m.label}: ${m.mm.toFixed(1)} mm`, c);
+  S.measures.forEach((m, i) => {
+    const c = PALETTE[i % PALETTE.length];
+    dot(m.p1, c); dot(m.p2, c); line(m.p1, m.p2, c);
+    badge(m.p1, m.p2, `${m.label}: ${m.mm.toFixed(1)} mm`, c);
   });
 
-  // Pending measurement point
-  if (S.pendingPts[0]) dot(S.pendingPts[0], '#4299e1');
+  // Pending point
+  if (S.pending[0]) dot(S.pending[0], '#4299e1');
 }
 
-// ── Pointer events ────────────────────────────────────────────────────────────
-
-canvas.addEventListener('pointerdown', e => {
+// ── Pointer ───────────────────────────────────────────────────────────────────
+cv.addEventListener('pointerdown', e => {
   e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const px = (e.clientX - rect.left) * (canvas.width  / rect.width)  / S.scale;
-  const py = (e.clientY - rect.top)  * (canvas.height / rect.height) / S.scale;
-  const pt = { x: px, y: py };
+  const r = cv.getBoundingClientRect();
+  const pt = {
+    x: (e.clientX - r.left) * (cv.width  / r.width)  / S.scale,
+    y: (e.clientY - r.top)  * (cv.height / r.height) / S.scale,
+  };
 
-  if (S.phase === 'calibrate') {
-    S.calibPts.push(pt);
-    if (S.calibPts.length === 2) {
-      S.pxPerMm = dist(S.calibPts[0], S.calibPts[1]) / STUD_MM;
-      S.phase = 'ready';
-      updateUI();
+  if (S.phase === 'calib') {
+    S.refPts.push(pt);
+    redraw();
+    if (S.refPts.length === 2) {
+      S.phase = 'ref';
+      setInst('How far apart are those two points? Enter the real distance in mm below.', 'blue');
+      document.getElementById('refRow').style.display = 'flex';
+      document.getElementById('refMm').focus();
+      hideBtns();
     } else {
-      setInst('Now click the center of an <strong>adjacent stud</strong> (directly next to it).', 'orange');
+      setInst('Now click the <strong>other end</strong> of that same edge or feature.', 'o');
     }
-    redraw();
-
   } else if (S.phase === 'measure') {
-    S.pendingPts.push(pt);
+    S.pending.push(pt);
     redraw();
-    if (S.pendingPts.length === 2) {
-      const mm = dist(S.pendingPts[0], S.pendingPts[1]) / S.pxPerMm;
-      S.measurements.push({ label: S.pendingLabel, p1: S.pendingPts[0], p2: S.pendingPts[1], mm });
-      S.pendingPts = [];
-      S.phase = 'ready';
-      updateUI();
+    if (S.pending.length === 2) {
+      const mm = Math.hypot(S.pending[1].x-S.pending[0].x, S.pending[1].y-S.pending[0].y) / S.pxPerMm;
+      S.measures.push({ label: S.pendingLabel, p1: S.pending[0], p2: S.pending[1], mm });
+      S.pending = [];
+      enterReady();
       redraw();
     } else {
-      setInst(`Click the <strong>second point</strong> for "${S.pendingLabel}".`, 'blue');
+      setInst(`Click the <strong>other end</strong> of "${S.pendingLabel}".`, 'blue');
     }
   }
 });
 
-// ── Phase helpers ─────────────────────────────────────────────────────────────
-
-function enterCalibrate() {
-  S.phase = 'calibrate';
-  S.calibPts = [];
-  S.pxPerMm = null;
-  setInst('Step 1 — Click the center of one <strong>stud</strong> (a round bump on top of the brick).', 'orange');
-  setSteps(1, 0);
-  showBtns([]);
-  hideLabelRow();
+// ── Phase transitions ─────────────────────────────────────────────────────────
+function enterCalib() {
+  S.phase = 'calib'; S.refPts = []; S.pxPerMm = null;
+  setInst('Click one end of a brick edge — any straight edge you can measure.', 'o');
+  hideBtns();
+  document.getElementById('refRow').style.display = 'none';
   redraw();
 }
 
-function enterMeasure(label) {
-  S.pendingLabel = label;
-  S.pendingPts = [];
-  S.phase = 'measure';
-  setInst(`Click the <strong>first point</strong> for "${label}".`, 'blue');
-  setSteps(2, 1);
-  showBtns([['Cancel', 'btn-gray', cancelMeasure]]);
-  hideLabelRow();
+function setRef() {
+  const mm = parseFloat(document.getElementById('refMm').value);
+  if (!mm || mm <= 0) { document.getElementById('refMm').focus(); return; }
+  const d = Math.hypot(S.refPts[1].x-S.refPts[0].x, S.refPts[1].y-S.refPts[0].y);
+  S.pxPerMm = d / mm;
+  document.getElementById('refRow').style.display = 'none';
+  enterReady();
   redraw();
 }
 
-function cancelMeasure() {
-  S.pendingPts = [];
-  S.phase = 'ready';
-  updateUI();
+function enterReady() {
+  S.phase = 'measure'; // keep phase but show buttons
+  setInst('Now click two points on the brick to measure a dimension.', 'green');
+  showBtns([
+    ['Length',  'b', () => startMeasure('Length')],
+    ['Width',   'b', () => startMeasure('Width')],
+    ['Height',  'b', () => startMeasure('Height')],
+    ['Re-calibrate', 'gr', enterCalib],
+  ]);
+  updateResults();
+  S.phase = 'idle';
+}
+
+function startMeasure(label) {
+  S.pendingLabel = label; S.pending = []; S.phase = 'measure';
+  setInst(`Click one end of <strong>${label}</strong> on the brick.`, 'blue');
+  showBtns([['Cancel', 'gr', enterReady]]);
   redraw();
 }
 
-function updateUI() {
-  if (S.phase === 'ready') {
-    const calibrated = S.pxPerMm !== null;
-    setInst(
-      calibrated
-        ? `Calibrated (${S.pxPerMm.toFixed(1)} px/mm). Choose a dimension to measure.`
-        : 'Calibrated!',
-      'green'
-    );
-    setSteps(2, 1);
-    showBtns([
-      ['Length',  'btn-blue',   () => startLabel('Length')],
-      ['Width',   'btn-blue',   () => startLabel('Width')],
-      ['Height',  'btn-blue',   () => startLabel('Height')],
-      ['Custom…', 'btn-gray',   () => startLabel(null)],
-      ['Re-calibrate', 'btn-gray', enterCalibrate],
-    ]);
-    updateResults();
-  }
+// ── Results (plain text) ──────────────────────────────────────────────────────
+function updateResults() {
+  const box = document.getElementById('res');
+  const br  = document.getElementById('bottomRow');
+  if (!S.measures.length) { box.style.display = 'none'; br.style.display = 'none'; return; }
+  box.style.display = 'block';
+  br.style.display  = 'flex';
+  box.innerHTML = S.measures.map((m, i) => `
+    <div class="dim-line">
+      <span class="dim-name">${m.label}</span>
+      <span class="dim-val">${m.mm.toFixed(1)} mm</span>
+      <button class="dim-del" onclick="del(${i})">✕</button>
+    </div>`).join('<hr>');
 }
 
-function startLabel(preset) {
-  if (preset) {
-    enterMeasure(preset);
-  } else {
-    S.phase = 'awaiting-label';
-    showLabelRow();
-    showBtns([]);
-    setInst('Type a name for this dimension, then press Start.', 'blue');
-  }
-}
+function del(i) { S.measures.splice(i, 1); updateResults(); redraw(); }
 
-function confirmLabel() {
-  const val = document.getElementById('labelInput').value.trim();
-  enterMeasure(val || `Dim ${S.measurements.length + 1}`);
-}
-
-// ── UI helpers ────────────────────────────────────────────────────────────────
-
-function setInst(html, color) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setInst(html, t) {
   const el = document.getElementById('inst');
   el.innerHTML = html;
-  el.className = 'instruction' + (color === 'blue' ? ' blue' : color === 'green' ? ' green' : '');
+  el.className = 'card' + (t==='blue'?'  blue':t==='green'?' green':'');
 }
-
-function setSteps(active, done) {
-  // active = 1-indexed step that is current
-  ['s1','s2','s3'].forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (i + 1 < active) el.className = 'step done';
-    else if (i + 1 === active) el.className = 'step active';
-    else el.className = 'step';
-  });
-}
-
 function showBtns(defs) {
   const row = document.getElementById('btnRow');
   row.style.display = defs.length ? 'flex' : 'none';
   row.innerHTML = '';
-  defs.forEach(([text, cls, fn]) => {
+  defs.forEach(([txt, cls, fn]) => {
     const b = document.createElement('button');
-    b.className = 'btn ' + cls;
-    b.textContent = text;
-    b.onclick = fn;
-    row.appendChild(b);
+    b.className = 'btn ' + cls; b.textContent = txt; b.onclick = fn; row.appendChild(b);
   });
 }
-
-function showLabelRow() {
-  document.getElementById('labelRow').style.display = 'flex';
-  document.getElementById('labelInput').value = '';
-  document.getElementById('labelInput').focus();
-}
-
-function hideLabelRow() {
-  document.getElementById('labelRow').style.display = 'none';
-}
-
-function updateResults() {
-  const wrap = document.getElementById('resultsWrap');
-  const body = document.getElementById('resultsBody');
-  const exportRow = document.getElementById('exportRow');
-  if (S.measurements.length === 0) {
-    wrap.style.display = 'none';
-    exportRow.style.display = 'none';
-    return;
-  }
-  wrap.style.display = 'block';
-  exportRow.style.display = 'flex';
-  body.innerHTML = S.measurements.map((m, i) => `
-    <tr>
-      <td>${m.label}</td>
-      <td class="val">${m.mm.toFixed(1)} mm</td>
-      <td><button class="del" onclick="deleteMeasurement(${i})" title="Remove">✕</button></td>
-    </tr>`).join('');
-}
-
-function deleteMeasurement(i) {
-  S.measurements.splice(i, 1);
-  updateResults();
-  redraw();
-}
-
-// ── Export CSV ────────────────────────────────────────────────────────────────
-
-function exportCSV() {
-  const rows = [['Dimension', 'mm']].concat(S.measurements.map(m => [m.label, m.mm.toFixed(2)]));
-  const csv = rows.map(r => r.join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = 'lego_measurements.csv';
-  a.click();
-}
-
-// ── Reset ─────────────────────────────────────────────────────────────────────
+function hideBtns() { const r = document.getElementById('btnRow'); r.style.display='none'; r.innerHTML=''; }
 
 function resetAll() {
-  S.phase = 'upload';
-  S.img = null; S.scale = 1; S.pxPerMm = null;
-  S.calibPts = []; S.measurements = []; S.pendingPts = [];
-  document.getElementById('uploadZone').style.display = 'block';
-  document.getElementById('canvasWrap').style.display = 'none';
-  document.getElementById('btnRow').style.display = 'none';
-  document.getElementById('resultsWrap').style.display = 'none';
-  document.getElementById('exportRow').style.display = 'none';
-  hideLabelRow();
-  setInst('Take a photo directly overhead (top-down, studs facing up) and upload it below.', '');
-  setSteps(1, 0);
-  document.getElementById('fileInput').value = '';
+  Object.assign(S, { phase:'upload', img:null, scale:1, pxPerMm:null, refPts:[], measures:[], pending:[], pendingLabel:'' });
+  ctx.clearRect(0,0,cv.width,cv.height);
+  document.getElementById('zone').style.display = 'block';
+  document.getElementById('cw').style.display   = 'none';
+  document.getElementById('refRow').style.display = 'none';
+  document.getElementById('res').style.display = 'none';
+  document.getElementById('bottomRow').style.display = 'none';
+  hideBtns();
+  setInst('Take a straight top-down photo (studs up) and upload it.', '');
+  document.getElementById('fi').value = '';
 }
 
-// ── File input ────────────────────────────────────────────────────────────────
-
-document.getElementById('fileInput').onchange = e => loadImage(e.target.files[0]);
-
-const zone = document.getElementById('uploadZone');
-zone.ondragover = e => { e.preventDefault(); zone.classList.add('dragover'); };
-zone.ondragleave = () => zone.classList.remove('dragover');
-zone.ondrop = e => { e.preventDefault(); zone.classList.remove('dragover'); loadImage(e.dataTransfer.files[0]); };
-
-// Label input — allow Enter key
-document.getElementById('labelInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmLabel(); });
-
-// Init
-setSteps(1, 0);
+// ── File events ───────────────────────────────────────────────────────────────
+document.getElementById('fi').onchange = e => loadFile(e.target.files[0]);
+document.getElementById('refMm').addEventListener('keydown', e => { if (e.key==='Enter') setRef(); });
+const zone = document.getElementById('zone');
+zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag'); };
+zone.ondragleave = () => zone.classList.remove('drag');
+zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); };
 </script>
 </body>
 </html>
