@@ -9,314 +9,275 @@
     body {
       font-family: system-ui, -apple-system, sans-serif;
       background: #1a1a2e; color: #eaeaea;
-      min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     }
-    .container { width: 100%; max-width: 600px; padding: 1rem; }
-    h1 { font-size: 1.2rem; margin-bottom: 0.2rem; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 1rem; }
+    .wrap { width: 100%; max-width: 580px; padding: 1rem; }
+    h1 { font-size: 1.2rem; margin-bottom: .2rem; }
+    .sub { color: #888; font-size: .83rem; margin-bottom: 1rem; }
 
     .card {
       background: #16213e; border-radius: 10px;
-      padding: 0.75rem 1rem; margin-bottom: 0.9rem;
-      border-left: 3px solid #ed8936; font-size: 0.88rem; line-height: 1.5;
+      padding: .7rem 1rem; margin-bottom: .85rem;
+      border-left: 3px solid #ed8936; font-size: .88rem; line-height: 1.5;
     }
     .card.blue  { border-color: #4299e1; }
     .card.green { border-color: #48bb78; }
+    .card.red   { border-color: #fc8181; }
 
-    .upload-zone {
+    .drop {
       border: 2px dashed #4a5568; border-radius: 12px;
       padding: 2.5rem 1rem; text-align: center; cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
+      transition: border-color .2s, background .2s;
     }
-    .upload-zone:hover, .upload-zone.drag { border-color: #ed8936; background: rgba(237,137,54,.08); }
-    .upload-zone input { display: none; }
-    .upload-zone .ico { font-size: 2.5rem; margin-bottom: 0.4rem; }
-    .upload-zone .hint { color: #888; font-size: 0.82rem; margin-top: 0.3rem; }
+    .drop:hover, .drop.over { border-color: #ed8936; background: rgba(237,137,54,.08); }
+    .drop input { display: none; }
+    .drop .ico { font-size: 2.5rem; margin-bottom: .4rem; }
+    .drop .hint { color: #888; font-size: .82rem; margin-top: .3rem; }
 
-    .canvas-wrap { display: none; margin-bottom: 0.9rem; }
-    canvas { width: 100%; display: block; border-radius: 10px; cursor: crosshair; touch-action: none; }
+    canvas { width: 100%; display: block; border-radius: 10px; margin-bottom: .85rem; }
+
+    .spinner {
+      display: flex; align-items: center; gap: .6rem;
+      color: #888; font-size: .88rem; margin-bottom: .85rem;
+    }
+    .spinner svg { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .results {
+      background: #16213e; border-radius: 10px;
+      padding: 1rem 1.2rem; margin-bottom: .85rem; display: none;
+    }
+    .results .row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: .3rem 0; border-bottom: 1px solid #2d3748;
+    }
+    .results .row:last-child { border-bottom: none; }
+    .results .lbl { color: #aaa; font-size: .88rem; }
+    .results .val { color: #48bb78; font-weight: 700; font-size: 1.1rem; }
+    .results .note { color: #666; font-size: .8rem; }
 
     .btn {
-      padding: 0.55rem 1.1rem; border-radius: 7px; border: none;
-      cursor: pointer; font-size: 0.88rem; font-weight: 500; transition: opacity .15s;
+      padding: .5rem 1rem; border-radius: 7px; border: none;
+      cursor: pointer; font-size: .87rem; font-weight: 500;
+      background: #2d3748; color: #eaeaea; transition: opacity .15s;
+      margin-bottom: .85rem;
     }
     .btn:active { opacity: .7; }
-    .o { background: #ed8936; color: #fff; }
-    .b { background: #4299e1; color: #fff; }
-    .g { background: #48bb78; color: #1a1a2e; }
-    .gr { background: #2d3748; color: #eaeaea; }
-    .btn-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .9rem; }
-
-    .ref-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .9rem; }
-    .ref-row input {
-      width: 90px; background: #2d3748; border: 1px solid #4a5568;
-      color: #eaeaea; border-radius: 7px; padding: .5rem .6rem; font-size: .9rem; text-align: center;
-    }
-    .ref-row input:focus { outline: none; border-color: #4299e1; }
-    .ref-row span { color: #888; font-size: .88rem; }
-
-    /* Plain text results */
-    .results-box {
-      background: #16213e; border-radius: 10px;
-      padding: 1rem 1.25rem; margin-bottom: .9rem;
-      font-size: 1rem; line-height: 1.9; display: none;
-    }
-    .results-box .dim-line { display: flex; justify-content: space-between; align-items: center; }
-    .results-box .dim-name { color: #aaa; }
-    .results-box .dim-val  { color: #48bb78; font-weight: 700; font-size: 1.1rem; }
-    .results-box .dim-del  { background: none; border: none; color: #555; cursor: pointer; font-size: 1rem; padding: 0 .2rem; }
-    .results-box .dim-del:hover { color: #fc8181; }
-    .results-box hr { border: none; border-top: 1px solid #2d3748; margin: .5rem 0; }
   </style>
 </head>
 <body>
-<div class="container">
+<div class="wrap">
   <h1>LEGO Brick Measurer</h1>
-  <p class="subtitle">Upload photo → set scale → click edges → get dimensions</p>
+  <p class="sub">Upload a photo — dimensions appear automatically</p>
 
   <div class="card" id="inst">
-    Take a straight top-down photo (studs up) and upload it.
+    Take a <strong>top-down photo</strong> with the <strong>studs facing up</strong>,
+    on a plain background. Then upload it below.
   </div>
 
-  <div class="upload-zone" id="zone" onclick="document.getElementById('fi').click()">
+  <div class="drop" id="drop" onclick="document.getElementById('fi').click()">
     <input type="file" id="fi" accept="image/*">
     <div class="ico">📷</div>
     <div>Tap to take or select a photo</div>
-    <div class="hint">Shoot straight down · JPG or PNG</div>
+    <div class="hint">Shoot straight down · studs up · plain background</div>
   </div>
 
-  <div class="canvas-wrap" id="cw"><canvas id="cv"></canvas></div>
+  <canvas id="cv" style="display:none"></canvas>
 
-  <!-- Reference mm input (shown after 2 calibration points clicked) -->
-  <div class="ref-row" id="refRow" style="display:none">
-    <input type="number" id="refMm" placeholder="mm" min="1" max="999">
-    <span>mm between those two points</span>
-    <button class="btn o" onclick="setRef()">Set</button>
+  <div class="spinner" id="spin" style="display:none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2">
+      <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15"/>
+    </svg>
+    Detecting studs…
   </div>
 
-  <div class="btn-row" id="btnRow" style="display:none"></div>
+  <div class="results" id="res"></div>
 
-  <!-- Results -->
-  <div class="results-box" id="res"></div>
-
-  <div class="btn-row" id="bottomRow" style="display:none">
-    <button class="btn gr" onclick="resetAll()">Start over</button>
-  </div>
+  <button class="btn" id="again" style="display:none" onclick="reset()">Try another photo</button>
 </div>
 
+<!-- OpenCV.js loaded from official CDN -->
+<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onCvLoad()"></script>
 <script>
-const STUD_MM = 8;
-const cv  = document.getElementById('cv');
-const ctx = cv.getContext('2d');
+let cvOk = false, pendingImg = null;
 
-const S = {
-  phase: 'upload',   // upload | calib | ref | measure
-  img: null, scale: 1, pxPerMm: null,
-  refPts: [],
-  measures: [],      // [{label, p1, p2, mm}]
-  pending: [],       // points for current measurement
-  pendingLabel: '',
-};
+function onCvLoad() { cvOk = true; if (pendingImg) run(pendingImg); }
 
 // ── File loading ──────────────────────────────────────────────────────────────
-function loadFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
+function loadFile(f) {
+  if (!f || !f.type.startsWith('image/')) return;
   const img = new Image();
   img.onload = () => {
-    S.img = img;
-    const maxW = Math.min(568, document.querySelector('.container').clientWidth);
-    S.scale = maxW / img.naturalWidth;
-    cv.width  = img.naturalWidth  * S.scale;
-    cv.height = img.naturalHeight * S.scale;
-    document.getElementById('zone').style.display = 'none';
-    document.getElementById('cw').style.display   = 'block';
-    enterCalib();
+    document.getElementById('drop').style.display = 'none';
+    drawPreview(img);
+    if (cvOk) run(img); else { pendingImg = img; showSpin(true); setInst('Loading image analysis library…', ''); }
   };
-  img.src = URL.createObjectURL(file);
+  img.src = URL.createObjectURL(f);
 }
 
-// ── Drawing ───────────────────────────────────────────────────────────────────
-const PALETTE = ['#4299e1','#68d391','#f6ad55','#fc8181','#b794f4','#76e4f7'];
+document.getElementById('fi').onchange = e => loadFile(e.target.files[0]);
+const drop = document.getElementById('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); loadFile(e.dataTransfer.files[0]); };
 
-function redraw() {
-  if (!S.img) return;
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.drawImage(S.img, 0, 0, cv.width, cv.height);
+// ── Canvas preview ────────────────────────────────────────────────────────────
+function drawPreview(img) {
+  const cv2 = document.getElementById('cv');
+  const maxW = Math.min(548, document.querySelector('.wrap').clientWidth);
+  const scale = maxW / img.naturalWidth;
+  cv2.width  = img.naturalWidth  * scale;
+  cv2.height = img.naturalHeight * scale;
+  cv2.style.display = 'block';
+  cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
+  cv2._dispScale = scale;
+  cv2._img = img;
+}
 
-  const R  = Math.max(7, cv.width * 0.013);
-  const LW = Math.max(2.5, cv.width * 0.005);
+// ── Main analysis ─────────────────────────────────────────────────────────────
+function run(img) {
+  showSpin(true);
+  setInst('Detecting studs…', '');
+  // Run in next tick so spinner renders first
+  setTimeout(() => {
+    try { analyze(img); }
+    catch (e) { showError('Analysis crashed: ' + e.message); }
+  }, 50);
+}
 
-  function dot(p, col) {
-    const x = p.x * S.scale, y = p.y * S.scale;
-    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2);
-    ctx.fillStyle = col; ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+function analyze(img) {
+  // Downsample to max 1400px for speed
+  const MAX = 1400;
+  const sc  = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const W   = Math.round(img.naturalWidth  * sc);
+  const H   = Math.round(img.naturalHeight * sc);
+
+  const oc = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  oc.getContext('2d').drawImage(img, 0, 0, W, H);
+
+  const src    = cv.imread(oc);
+  const gray   = new cv.Mat();
+  const blur   = new cv.Mat();
+  const circles = new cv.Mat();
+
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, blur, new cv.Size(7, 7), 1.5, 1.5);
+
+  const dim    = Math.min(W, H);
+  const minR   = Math.max(4, Math.floor(dim * 0.008));
+  const maxR   = Math.floor(dim * 0.09);
+  const minDst = Math.floor(minR * 1.8);
+
+  // Try decreasing accumulator thresholds until we find enough circles
+  let found = false;
+  for (const p2 of [35, 25, 18, 13]) {
+    cv.HoughCircles(blur, circles, cv.HOUGH_GRADIENT, 1, minDst, 80, p2, minR, maxR);
+    if (circles.cols >= 2) { found = true; break; }
   }
-  function line(a, b, col) {
+
+  src.delete(); gray.delete(); blur.delete();
+
+  if (!found || circles.cols < 2) {
+    circles.delete();
+    showError('Could not detect studs automatically.\n\nTips:\n• Shoot straight down, studs facing up\n• Use a plain white/dark background\n• Ensure good, even lighting\n• Move closer to fill the frame with the brick');
+    return;
+  }
+
+  // Extract circles
+  const raw = [];
+  for (let i = 0; i < circles.cols; i++) {
+    raw.push({ x: circles.data32F[i*3], y: circles.data32F[i*3+1], r: circles.data32F[i*3+2] });
+  }
+  circles.delete();
+
+  // Filter by consistent radius (remove non-stud circles)
+  const sorted = raw.map(c => c.r).sort((a,b)=>a-b);
+  const medR   = sorted[Math.floor(sorted.length / 2)];
+  const studs  = raw.filter(s => Math.abs(s.r - medR) / medR < 0.38);
+
+  if (studs.length < 2) { showError('Too few studs detected. Try better lighting.'); return; }
+
+  // Scale calibration: nearest-neighbor distance = 8mm between stud centers
+  const nnDists = studs.map(a => {
+    return Math.min(...studs.filter(b => b !== a).map(b => Math.hypot(a.x-b.x, a.y-b.y)));
+  }).sort((a,b)=>a-b);
+  const studSpacePx = nnDists[Math.floor(nnDists.length / 2)]; // median
+  const pxPerMm    = studSpacePx / 8;
+
+  // Stud grid extent
+  const xs = studs.map(s => s.x), ys = studs.map(s => s.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const nX = Math.round((maxX - minX) / studSpacePx) + 1;
+  const nY = Math.round((maxY - minY) / studSpacePx) + 1;
+
+  // LEGO outer dimensions: n studs → n×8 − 0.2 mm
+  const dimA = +(nX * 8 - 0.2).toFixed(1);
+  const dimB = +(nY * 8 - 0.2).toFixed(1);
+  const longMm  = Math.max(dimA, dimB);
+  const shortMm = Math.min(dimA, dimB);
+
+  // Draw circles on preview canvas
+  annotate(studs, medR, sc);
+
+  showSpin(false);
+  showResults(nX, nY, longMm, shortMm, studs.length);
+}
+
+// ── Overlay detected studs on preview canvas ──────────────────────────────────
+function annotate(studs, medR, analysisScale) {
+  const cv2 = document.getElementById('cv');
+  const ctx  = cv2.getContext('2d');
+  const disp = cv2._dispScale;
+  // analysisScale: img→analysis pixels; disp: img→canvas pixels
+  const factor = disp / analysisScale;
+
+  studs.forEach(s => {
     ctx.beginPath();
-    ctx.moveTo(a.x*S.scale, a.y*S.scale);
-    ctx.lineTo(b.x*S.scale, b.y*S.scale);
-    ctx.strokeStyle = col; ctx.lineWidth = LW; ctx.stroke();
-  }
-  function badge(a, b, text, col) {
-    const mx = (a.x+b.x)/2*S.scale, my = (a.y+b.y)/2*S.scale;
-    const fs = Math.max(12, cv.width*0.026);
-    ctx.font = `bold ${fs}px system-ui`;
-    const tw = ctx.measureText(text).width;
-    ctx.fillStyle = 'rgba(0,0,0,.65)';
-    ctx.beginPath(); ctx.roundRect(mx-tw/2-5, my-fs-4, tw+10, fs+8, 4); ctx.fill();
-    ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(text, mx, my+2);
-  }
-
-  // Calibration points
-  S.refPts.forEach(p => dot(p, '#ed8936'));
-  if (S.refPts.length === 2) {
-    line(S.refPts[0], S.refPts[1], '#ed8936');
-    if (S.pxPerMm) badge(S.refPts[0], S.refPts[1], 'scale ref', '#ed8936');
-  }
-
-  // Completed measurements
-  S.measures.forEach((m, i) => {
-    const c = PALETTE[i % PALETTE.length];
-    dot(m.p1, c); dot(m.p2, c); line(m.p1, m.p2, c);
-    badge(m.p1, m.p2, `${m.label}: ${m.mm.toFixed(1)} mm`, c);
+    ctx.arc(s.x * factor, s.y * factor, s.r * factor, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ed8936';
+    ctx.lineWidth = Math.max(2, cv2.width * 0.004);
+    ctx.stroke();
   });
-
-  // Pending point
-  if (S.pending[0]) dot(S.pending[0], '#4299e1');
 }
 
-// ── Pointer ───────────────────────────────────────────────────────────────────
-cv.addEventListener('pointerdown', e => {
-  e.preventDefault();
-  const r = cv.getBoundingClientRect();
-  const pt = {
-    x: (e.clientX - r.left) * (cv.width  / r.width)  / S.scale,
-    y: (e.clientY - r.top)  * (cv.height / r.height) / S.scale,
-  };
-
-  if (S.phase === 'calib') {
-    S.refPts.push(pt);
-    redraw();
-    if (S.refPts.length === 2) {
-      S.phase = 'ref';
-      setInst('How far apart are those two points? Enter the real distance in mm below.', 'blue');
-      document.getElementById('refRow').style.display = 'flex';
-      document.getElementById('refMm').focus();
-      hideBtns();
-    } else {
-      setInst('Now click the <strong>other end</strong> of that same edge or feature.', 'o');
-    }
-  } else if (S.phase === 'measure') {
-    S.pending.push(pt);
-    redraw();
-    if (S.pending.length === 2) {
-      const mm = Math.hypot(S.pending[1].x-S.pending[0].x, S.pending[1].y-S.pending[0].y) / S.pxPerMm;
-      S.measures.push({ label: S.pendingLabel, p1: S.pending[0], p2: S.pending[1], mm });
-      S.pending = [];
-      enterReady();
-      redraw();
-    } else {
-      setInst(`Click the <strong>other end</strong> of "${S.pendingLabel}".`, 'blue');
-    }
-  }
-});
-
-// ── Phase transitions ─────────────────────────────────────────────────────────
-function enterCalib() {
-  S.phase = 'calib'; S.refPts = []; S.pxPerMm = null;
-  setInst('Click one end of a brick edge — any straight edge you can measure.', 'o');
-  hideBtns();
-  document.getElementById('refRow').style.display = 'none';
-  redraw();
+// ── Results ───────────────────────────────────────────────────────────────────
+function showResults(nX, nY, longMm, shortMm, studCount) {
+  setInst(`Detected <strong>${studCount} studs</strong> — ${nX}×${nY} grid`, 'green');
+  const res = document.getElementById('res');
+  res.style.display = 'block';
+  res.innerHTML = `
+    <div class="row"><span class="lbl">Length</span><span class="val">${longMm} mm</span></div>
+    <div class="row"><span class="lbl">Width</span><span class="val">${shortMm} mm</span></div>
+    <div class="row"><span class="lbl">Height</span><span class="note">Take a side-on photo to measure height</span></div>`;
+  document.getElementById('again').style.display = 'block';
 }
 
-function setRef() {
-  const mm = parseFloat(document.getElementById('refMm').value);
-  if (!mm || mm <= 0) { document.getElementById('refMm').focus(); return; }
-  const d = Math.hypot(S.refPts[1].x-S.refPts[0].x, S.refPts[1].y-S.refPts[0].y);
-  S.pxPerMm = d / mm;
-  document.getElementById('refRow').style.display = 'none';
-  enterReady();
-  redraw();
+function showError(msg) {
+  showSpin(false);
+  setInst(msg.replace(/\n/g, '<br>'), 'red');
+  document.getElementById('again').style.display = 'block';
 }
-
-function enterReady() {
-  S.phase = 'measure'; // keep phase but show buttons
-  setInst('Now click two points on the brick to measure a dimension.', 'green');
-  showBtns([
-    ['Length',  'b', () => startMeasure('Length')],
-    ['Width',   'b', () => startMeasure('Width')],
-    ['Height',  'b', () => startMeasure('Height')],
-    ['Re-calibrate', 'gr', enterCalib],
-  ]);
-  updateResults();
-  S.phase = 'idle';
-}
-
-function startMeasure(label) {
-  S.pendingLabel = label; S.pending = []; S.phase = 'measure';
-  setInst(`Click one end of <strong>${label}</strong> on the brick.`, 'blue');
-  showBtns([['Cancel', 'gr', enterReady]]);
-  redraw();
-}
-
-// ── Results (plain text) ──────────────────────────────────────────────────────
-function updateResults() {
-  const box = document.getElementById('res');
-  const br  = document.getElementById('bottomRow');
-  if (!S.measures.length) { box.style.display = 'none'; br.style.display = 'none'; return; }
-  box.style.display = 'block';
-  br.style.display  = 'flex';
-  box.innerHTML = S.measures.map((m, i) => `
-    <div class="dim-line">
-      <span class="dim-name">${m.label}</span>
-      <span class="dim-val">${m.mm.toFixed(1)} mm</span>
-      <button class="dim-del" onclick="del(${i})">✕</button>
-    </div>`).join('<hr>');
-}
-
-function del(i) { S.measures.splice(i, 1); updateResults(); redraw(); }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function setInst(html, t) {
+function setInst(html, type) {
   const el = document.getElementById('inst');
   el.innerHTML = html;
-  el.className = 'card' + (t==='blue'?'  blue':t==='green'?' green':'');
+  el.className = 'card' + (type === 'blue' ? ' blue' : type === 'green' ? ' green' : type === 'red' ? ' red' : '');
 }
-function showBtns(defs) {
-  const row = document.getElementById('btnRow');
-  row.style.display = defs.length ? 'flex' : 'none';
-  row.innerHTML = '';
-  defs.forEach(([txt, cls, fn]) => {
-    const b = document.createElement('button');
-    b.className = 'btn ' + cls; b.textContent = txt; b.onclick = fn; row.appendChild(b);
-  });
-}
-function hideBtns() { const r = document.getElementById('btnRow'); r.style.display='none'; r.innerHTML=''; }
+function showSpin(on) { document.getElementById('spin').style.display = on ? 'flex' : 'none'; }
 
-function resetAll() {
-  Object.assign(S, { phase:'upload', img:null, scale:1, pxPerMm:null, refPts:[], measures:[], pending:[], pendingLabel:'' });
-  ctx.clearRect(0,0,cv.width,cv.height);
-  document.getElementById('zone').style.display = 'block';
-  document.getElementById('cw').style.display   = 'none';
-  document.getElementById('refRow').style.display = 'none';
+function reset() {
+  document.getElementById('drop').style.display = 'block';
+  document.getElementById('cv').style.display = 'none';
   document.getElementById('res').style.display = 'none';
-  document.getElementById('bottomRow').style.display = 'none';
-  hideBtns();
-  setInst('Take a straight top-down photo (studs up) and upload it.', '');
+  document.getElementById('again').style.display = 'none';
+  showSpin(false);
+  setInst('Take a <strong>top-down photo</strong> with the <strong>studs facing up</strong>, on a plain background. Then upload it below.', '');
   document.getElementById('fi').value = '';
+  pendingImg = null;
 }
-
-// ── File events ───────────────────────────────────────────────────────────────
-document.getElementById('fi').onchange = e => loadFile(e.target.files[0]);
-document.getElementById('refMm').addEventListener('keydown', e => { if (e.key==='Enter') setRef(); });
-const zone = document.getElementById('zone');
-zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag'); };
-zone.ondragleave = () => zone.classList.remove('drag');
-zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); };
 </script>
 </body>
 </html>
