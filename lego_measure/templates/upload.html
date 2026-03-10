@@ -68,6 +68,7 @@
     .result.success { background: #22543d; color: #9ae6b4; }
     .result.error { background: #742a2a; color: #feb2b2; }
     .result .path { font-family: monospace; word-break: break-all; }
+    .result .path a { color: #68d391; }
   </style>
 </head>
 <body>
@@ -123,6 +124,9 @@
         .then(data => {
           if (data.error) {
             showResult(data.error, true);
+          } else if (data.downloadUrl) {
+            showResult('Upload complete. Download image:', false,
+              '<a href="' + data.downloadUrl + '" target="_blank" rel="noopener">' + data.downloadUrl + '</a>');
           } else {
             showResult('Upload complete. Run measurement with:', false, 'python main.py ' + data.path);
           }
