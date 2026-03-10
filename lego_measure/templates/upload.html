@@ -146,164 +146,119 @@ function run(img) {
 }
 
 function analyze(img) {
-  // Downsample to max 1400px for speed
   const MAX = 1400;
-  const sc  = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
-  const W   = Math.round(img.naturalWidth  * sc);
-  const H   = Math.round(img.naturalHeight * sc);
+  const sc = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const W  = Math.round(img.naturalWidth  * sc);
+  const H  = Math.round(img.naturalHeight * sc);
 
   const oc = Object.assign(document.createElement('canvas'), { width: W, height: H });
   oc.getContext('2d').drawImage(img, 0, 0, W, H);
 
-  const src    = cv.imread(oc);
-  const gray   = new cv.Mat();
-  const eq     = new cv.Mat();
-  const blur   = new cv.Mat();
-  const circles = new cv.Mat();
-
+  const src  = cv.imread(oc);
+  const gray = new cv.Mat();
+  const eq   = new cv.Mat();
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  src.delete();
 
-  // CLAHE: adaptive contrast enhancement so dark/shadowed studs are detectable
+  // Step 1: CLAHE — adaptive contrast to recover dark/shadowed studs
   const clahe = new cv.CLAHE(3.0, new cv.Size(8, 8));
   clahe.apply(gray, eq);
-  clahe.delete();
+  clahe.delete(); gray.delete();
 
-  cv.GaussianBlur(eq, blur, new cv.Size(7, 7), 1.5, 1.5);
+  // Step 2: Morphological tophat — isolates small circular bright features (studs)
+  // against any background. Kernel must be larger than one stud.
+  const dim     = Math.min(W, H);
+  const kSize   = Math.max(15, Math.floor(dim * 0.07) | 1); // odd, ~1.5× expected stud diameter
+  const kernel  = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(kSize, kSize));
+  const tophat  = new cv.Mat();
+  cv.morphologyEx(eq, tophat, cv.MORPH_TOPHAT, kernel);
+  kernel.delete();
 
-  const dim    = Math.min(W, H);
-  const minR   = Math.max(4, Math.floor(dim * 0.008));
+  // Blend: eq provides global structure, tophat emphasises studs
+  const enhanced = new cv.Mat();
+  cv.addWeighted(eq, 0.5, tophat, 1.0, 0, enhanced);
+  tophat.delete(); eq.delete();
+
+  // Step 3: Gaussian blur before Hough (reduces noise-induced false circles)
+  const blur = new cv.Mat();
+  cv.GaussianBlur(enhanced, blur, new cv.Size(7, 7), 1.5, 1.5);
+  enhanced.delete();
+
+  // Step 4: HoughCircles — try progressively lower thresholds
+  // minDist based on expected stud spacing (studs can't overlap)
+  const minR   = Math.max(4,  Math.floor(dim * 0.008));
   const maxR   = Math.floor(dim * 0.10);
-  const minDst = Math.floor(minR * 1.6);
+  const minDst = Math.max(20, Math.floor(dim * 0.022));
 
-  // Try decreasing accumulator thresholds until we find enough circles
-  let found = false;
-  for (const p2 of [30, 22, 15, 10, 7]) {
-    cv.HoughCircles(blur, circles, cv.HOUGH_GRADIENT, 1, minDst, 70, p2, minR, maxR);
-    if (circles.cols >= 2) { found = true; break; }
+  let best = null;
+  for (const [p1, p2] of [[80,30],[70,22],[60,16],[50,11]]) {
+    const c = new cv.Mat();
+    cv.HoughCircles(blur, c, cv.HOUGH_GRADIENT, 1, minDst, p1, p2, minR, maxR);
+    // Accept if we got at least 4 circles and not an explosion of false positives
+    if (c.cols >= 4 && c.cols <= 48) { if (best) best.delete(); best = c; break; }
+    if (c.cols >= 2 && (!best || c.cols > best.cols) && c.cols <= 48) {
+      if (best) best.delete(); best = c;
+    } else { c.delete(); }
   }
+  blur.delete();
 
-  // If still not enough, retry with heavier blur (helps with noisy/angled photos)
-  if (!found || circles.cols < 4) {
-    const blur2 = new cv.Mat();
-    cv.GaussianBlur(eq, blur2, new cv.Size(11, 11), 2.5, 2.5);
-    for (const p2 of [20, 13, 9]) {
-      cv.HoughCircles(blur2, circles, cv.HOUGH_GRADIENT, 1, minDst, 60, p2, minR, maxR);
-      if (circles.cols > (found ? circles.cols : 0)) { found = circles.cols >= 2; break; }
-    }
-    blur2.delete();
-  }
-
-  src.delete(); gray.delete(); eq.delete(); blur.delete();
-
-  if (!found || circles.cols < 2) {
-    circles.delete();
-    showError('Could not detect studs automatically.\n\nTips:\n• Shoot straight down, studs facing up\n• Use a plain white or dark background (avoid red/bright colors)\n• Ensure good, even lighting\n• Move closer so the brick fills the frame');
+  if (!best || best.cols < 2) {
+    if (best) best.delete();
+    showError('Could not detect studs automatically.\n\nTips:\n• Shoot straight down, studs facing up\n• Use a plain white or dark background\n• Good even lighting — avoid harsh shadows\n• Move closer so the brick fills most of the frame');
     return;
   }
 
-  // Extract circles
+  // Step 5: Extract and filter circles by consistent radius
+  // (LEGO studs are identical — non-stud circles have different radii)
   const raw = [];
-  for (let i = 0; i < circles.cols; i++) {
-    raw.push({ x: circles.data32F[i*3], y: circles.data32F[i*3+1], r: circles.data32F[i*3+2] });
-  }
-  circles.delete();
+  for (let i = 0; i < Math.min(best.cols, 48); i++)
+    raw.push({ x: best.data32F[i*3], y: best.data32F[i*3+1], r: best.data32F[i*3+2] });
+  best.delete();
 
-  // Filter by consistent radius (remove non-stud circles; LEGO studs are uniform)
-  const sorted = raw.map(c => c.r).sort((a,b)=>a-b);
-  const medR   = sorted[Math.floor(sorted.length / 2)];
-  let studs = raw.filter(s => Math.abs(s.r - medR) / medR < 0.30);
+  const radii = raw.map(c => c.r).sort((a,b) => a-b);
+  const medR  = radii[Math.floor(radii.length / 2)];
+  let studs   = raw.filter(s => Math.abs(s.r - medR) / medR < 0.30);
+  if (studs.length < 2) { showError('Too few uniform circles found. Try better lighting.'); return; }
 
-  if (studs.length < 2) { showError('Too few studs detected. Try better lighting.'); return; }
-
-  // LEGO brick constants (official spec)
-  const LEGO_STUD_MM = 8.0;           // center-to-center stud spacing
-  const LEGO_WALL_MM = 0.2;           // outer wall reduces dimension
-  const LEGO_MAX_STUDS = 12;          // max studs per side for common bricks
-  const MIN_NN_PX = Math.max(8, Math.min(W, H) * 0.015);  // min px for 8mm (rejects false-pos pairs)
-
-  // 1. Spatial outlier rejection — keep only points in main cluster
-  const cx = studs.reduce((s, p) => s + p.x, 0) / studs.length;
-  const cy = studs.reduce((s, p) => s + p.y, 0) / studs.length;
-  const distances = studs.map(s => Math.hypot(s.x - cx, s.y - cy));
-  const medDist = distances.slice().sort((a,b)=>a-b)[Math.floor(distances.length / 2)];
-  studs = studs.filter((s, i) => distances[i] < medDist * 2.5);
+  // Step 6: Spatial clustering — keep only the main cluster (the brick)
+  // Eliminates stray circles from background or image borders
+  let cx = studs.reduce((a,s)=>a+s.x,0)/studs.length;
+  let cy = studs.reduce((a,s)=>a+s.y,0)/studs.length;
+  const dists  = studs.map(s => Math.hypot(s.x-cx, s.y-cy));
+  const medDst = dists.slice().sort((a,b)=>a-b)[Math.floor(dists.length/2)];
+  studs = studs.filter((_,i) => dists[i] < medDst * 2.5);
   if (studs.length < 2) { showError('Could not isolate brick. Use a plain background.'); return; }
 
-  // 2. Robust stud spacing: reject tiny NN (false positives), use median of valid
-  const nnDists = studs.map(a =>
-    Math.min(...studs.filter(b => b !== a).map(b => Math.hypot(a.x - b.x, a.y - b.y)))
-  ).filter(d => d >= MIN_NN_PX).sort((a,b)=>a-b);
+  // Step 7: Stud spacing from median nearest-neighbor distance
+  // Using NN distance (not radius) because LEGO pitch (8mm) is machined to ±0.01mm tolerance
+  const NN_MIN  = Math.max(8, dim * 0.015);
+  const nns = studs
+    .map(a => Math.min(...studs.filter(b=>b!==a).map(b=>Math.hypot(a.x-b.x,a.y-b.y))))
+    .filter(d => d >= NN_MIN)
+    .sort((a,b) => a-b);
+  if (nns.length < 1) { showError('Could not measure stud spacing. Ensure ≥2 studs are visible.'); return; }
+  const spacingPx = nns[Math.floor(nns.length / 2)]; // median = robust to outliers
 
-  if (nnDists.length < 2) {
-    showError('Calibration failed. Ensure studs are visible and well lit.');
-    return;
-  }
-  const studSpacePx = nnDists[Math.floor(nnDists.length / 2)];
-
-  // 3. Grid extent with LEGO constraints
+  // Step 8: Grid snapping — snap each detected stud to nearest integer grid position.
+  // This is the key step: handles partial detection correctly.
+  // Even if only 3/8 studs are found, their grid positions reveal the full grid extent.
   const xs = studs.map(s => s.x), ys = studs.map(s => s.y);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const ox = Math.min(...xs), oy = Math.min(...ys);
+  const snapped = studs.map(s => ({
+    gi: Math.round((s.x - ox) / spacingPx),
+    gj: Math.round((s.y - oy) / spacingPx),
+  }));
+  const nX = Math.max(1, Math.min(12, Math.max(...snapped.map(p=>p.gi)) + 1));
+  const nY = Math.max(1, Math.min(12, Math.max(...snapped.map(p=>p.gj)) + 1));
 
-  function countLines(vals, spacing) {
-    const s = [...vals].sort((a,b)=>a-b);
-    let lines = 1;
-    for (let i = 1; i < s.length; i++) {
-      if (s[i] - s[i-1] > spacing * 0.5) lines++;
-    }
-    return lines;
-  }
+  // Step 9: LEGO outer dimensions (official spec, unchanged since 1960s)
+  // Formula: n_studs × 8.0mm − 0.2mm = outer edge-to-edge length
+  const longMm  = +(Math.max(nX,nY) * 8.0 - 0.2).toFixed(1);
+  const shortMm = +(Math.min(nX,nY) * 8.0 - 0.2).toFixed(1);
 
-  let nX = Math.max(1, Math.min(LEGO_MAX_STUDS,
-    Math.round((maxX - minX) / studSpacePx) + 1));
-  let nY = Math.max(1, Math.min(LEGO_MAX_STUDS,
-    Math.round((maxY - minY) / studSpacePx) + 1));
-
-  const linesX = countLines(xs, studSpacePx);
-  const linesY = countLines(ys, studSpacePx);
-  nX = Math.max(nX, linesX);
-  nY = Math.max(nY, linesY);
-  nX = Math.min(nX, LEGO_MAX_STUDS);
-  nY = Math.min(nY, LEGO_MAX_STUDS);
-
-  // 4. Consistency: nX×nY should match detected count; clamp to LEGO brick bounds
-  const spanPxX = maxX - minX, spanPxY = maxY - minY;
-  const nFromSpanX = Math.round(spanPxX / studSpacePx) + 1;
-  const nFromSpanY = Math.round(spanPxY / studSpacePx) + 1;
-  const spanNx = Math.max(1, Math.min(LEGO_MAX_STUDS, nFromSpanX));
-  const spanNy = Math.max(1, Math.min(LEGO_MAX_STUDS, nFromSpanY));
-
-  if (nX * nY > studs.length * 2.5) {
-    // Grid too large — prefer span-based if within LEGO bounds, else stud-count lookup
-    if (spanNx * spanNy <= studs.length * 2) {
-      nX = spanNx; nY = spanNy;
-    } else {
-      const COMMON_GRIDS = { 1:[1,1], 2:[1,2], 3:[1,3], 4:[2,2], 6:[2,3], 8:[2,4], 10:[2,5], 12:[2,6] };
-      const guess = COMMON_GRIDS[studs.length];
-      if (guess) {
-        const [a, b] = guess;
-        if (spanPxX >= spanPxY) { nX = Math.max(a, b); nY = Math.min(a, b); }
-        else { nX = Math.min(a, b); nY = Math.max(a, b); }
-      } else {
-        nX = Math.min(spanNx, Math.max(1, Math.ceil(Math.sqrt(studs.length))));
-        nY = Math.min(spanNy, Math.max(1, Math.ceil(studs.length / nX)));
-      }
-    }
-  }
-  nX = Math.min(LEGO_MAX_STUDS, Math.max(1, nX));
-  nY = Math.min(LEGO_MAX_STUDS, Math.max(1, nY));
-
-  // 5. LEGO outer dimensions: n studs → n×8 − 0.2 mm (official brick spec)
-  const dimA = +(nX * LEGO_STUD_MM - LEGO_WALL_MM).toFixed(1);
-  const dimB = +(nY * LEGO_STUD_MM - LEGO_WALL_MM).toFixed(1);
-  const longMm  = Math.max(dimA, dimB);
-  const shortMm = Math.min(dimA, dimB);
-
-  // Draw circles on preview canvas
   annotate(studs, medR, sc);
-
   showSpin(false);
-  showResults(nX, nY, longMm, shortMm, studs.length);
+  showResults(Math.max(nX,nY), Math.min(nX,nY), longMm, shortMm, studs.length);
 }
 
 // ── Overlay detected studs on preview canvas ──────────────────────────────────
