@@ -1,0 +1,19 @@
+Removed 101 ignored files defined in .vercelignore
+  /.git/config
+  /.git/description
+  /.git/FETCH_HEAD
+  /.git/HEAD
+  /.git/hooks/applypatch-msg.sample
+  /.git/hooks/commit-msg.sample
+  /.git/hooks/fsmonitor-watchman.sample
+  /.git/hooks/post-update.sample
+  /.git/hooks/pre-applypatch.sample
+  /.git/hooks/pre-commit.sample
+Running "vercel build"
+Vercel CLI 50.28.0
+Build Completed in /vercel/output [26ms]
+Deploying outputs...
+Deployment completed
+Creating build cache...
+Skipping cache upload because no files were prepared
+Deployment Summary
