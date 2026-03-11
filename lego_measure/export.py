@@ -49,16 +49,34 @@ def export_to_csv(
                     ["Calibration", "r_squared", f"{calibration_data['r_squared']:.6f}"]
                 )
 
-        # Calibration curve (extended)
+        # Calibration curve (extended) — averages
         if calibration_data and "known_mm" in calibration_data:
             writer.writerow([])
-            writer.writerow(["Calibration curve", "known_mm", "measured_mm", "residual_mm"])
-            for k, m, r in zip(
+            stds = calibration_data.get("measured_mm_std", [0] * len(calibration_data["known_mm"]))
+            writer.writerow(["Calibration curve", "known_mm", "mean_measured_mm", "std_mm", "residual_mm"])
+            for k, m_val, s, r in zip(
                 calibration_data["known_mm"],
                 calibration_data["measured_mm"],
+                stds,
                 calibration_data["residuals"],
             ):
-                writer.writerow(["Calibration curve", f"{k:.2f}", f"{m:.4f}", f"{r:.4f}"])
+                writer.writerow(["Calibration curve", f"{k:.2f}", f"{m_val:.4f}", f"{s:.4f}", f"{r:.4f}"])
+
+        # Per-trial raw data
+        if calibration_data and "trial_measured_mm" in calibration_data:
+            writer.writerow([])
+            n_trials = calibration_data.get("trials_per_span", 3)
+            trial_headers = ["Trial data", "known_mm"] + [f"trial_{i+1}_mm" for i in range(n_trials)]
+            writer.writerow(trial_headers)
+            for span_str, trials in calibration_data["trial_measured_mm"].items():
+                row = ["Trial data", span_str] + [f"{t:.4f}" for t in trials]
+                writer.writerow(row)
+            writer.writerow([])
+            raw_headers = ["Trial raw px", "known_mm"] + [f"trial_{i+1}_px" for i in range(n_trials)]
+            writer.writerow(raw_headers)
+            for span_str, trials in calibration_data["trial_raw_px"].items():
+                row = ["Trial raw px", span_str] + [f"{t:.4f}" for t in trials]
+                writer.writerow(row)
 
         # Measurements
         writer.writerow([])

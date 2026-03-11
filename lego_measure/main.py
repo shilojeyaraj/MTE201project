@@ -137,16 +137,26 @@ def main() -> None:
     ref_raw_px, ref_mm, cal_axis = run_calibration(img_array)
     calibration_data = {"ref_pixel_dist": ref_raw_px, "ref_mm": ref_mm}
 
-    # 3. Optional extended calibration (8, 16, 24 mm)
-    if input("\nRun extended calibration (3 spans: 8, 16, 24 mm)? (y/n): ").strip().lower() == "y":
-        fig, ax = plt.subplots(figsize=(10, 8))
-        raw_px_per_mm = ref_raw_px / ref_mm
-        cal_ext = calibrate_extended(img_array, ax, raw_px_per_mm, cal_axis)
-        plt.close(fig)
-        calibration_data.update(cal_ext)
-        print(f"\nCalibration curve R² = {cal_ext['r_squared']:.4f}")
-        plot_calibration_curve(cal_ext)
-        plot_deviation(cal_ext)
+    # 3. Extended calibration: 3 trials each for 8, 16, 24 mm (9 total)
+    print("\n--- Extended calibration: 3 trials × 3 spans (8, 16, 24 mm) ---")
+    print("You will click 9 pairs of points total.\n")
+    fig, ax = plt.subplots(figsize=(10, 8))
+    raw_px_per_mm = ref_raw_px / ref_mm
+    cal_ext = calibrate_extended(img_array, ax, raw_px_per_mm, cal_axis)
+    plt.close(fig)
+    calibration_data.update(cal_ext)
+
+    print(f"\nCalibration curve R² = {cal_ext['r_squared']:.4f}")
+    print(f"{'Span (mm)':<12} {'Mean meas.':<14} {'Std dev':<12} {'Mean raw px':<14}")
+    print("-" * 52)
+    for k, m_val, s, rpx in zip(
+        cal_ext["known_mm"], cal_ext["measured_mm"],
+        cal_ext["measured_mm_std"], cal_ext["mean_raw_px"],
+    ):
+        print(f"{k:<12.0f} {m_val:<14.3f} {s:<12.4f} {rpx:<14.1f}")
+
+    plot_calibration_curve(cal_ext)
+    plot_deviation(cal_ext)
 
     # 4. Measurements (raw pixels in, calibration equation out)
     measurements = run_measurements(img_array, ref_raw_px, ref_mm, cal_axis)
