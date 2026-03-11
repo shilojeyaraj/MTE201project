@@ -85,14 +85,11 @@
 
 <script>
 // ── Constants (LEGO spec) ───────────────────────────────────────────────────────
-const LEGO_STUD_MM = 8.0;
-const SPANS_MM = [8.0, 16.0, 24.0];  // 1, 2, 3 stud spacings
-const REPEATS_PER_SPAN = 5;
+const LEGO_STUD_MM = 8.0;  // center-to-center spacing between adjacent studs
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let state = {
   img: null, scale: 1,           // img ref and display scale
-  spanIdx: 0, repeatIdx: 0,     // calibration progress
   calData: {},
   calLines: [],
   axis: 'x',
@@ -202,55 +199,22 @@ function promptAxisChoice() {
 function startCalibration(axis) {
   state.axis = axis;
   state.step = 'calibrate';
-  state.spanIdx = 0;
-  state.repeatIdx = 0;
-  state.calData = { 8: [], 16: [], 24: [] };
+  state.calData = { px: null };
   state.calLines = [];
-  promptCalibration();
-}
-
-// ── Calibration ───────────────────────────────────────────────────────────────
-function promptCalibration() {
-  const span = SPANS_MM[state.spanIdx];
-  const rep = state.repeatIdx + 1;
   setInst(
-    `Calibration <strong>${span} mm</strong> — repeat ${rep}/${REPEATS_PER_SPAN}<br>` +
-    `Click <strong>2 stud centers</strong> along the ${state.axis === 'x' ? 'horizontal' : 'vertical'} axis.`,
+    `Calibrate: Click <strong>2 adjacent stud centers</strong> (center of one stud, then center of the one right beside it) along the ${state.axis === 'x' ? 'horizontal' : 'vertical'} axis.`,
     'blue'
   );
   state.pendingClicks = [];
 }
 
 function finishCalibration() {
-  // Compute scale: mm/px from each span; use mean of all (8,16,24) for robustness
-  const allPx = [], allMm = [];
-  SPANS_MM.forEach(mm => {
-    const arr = state.calData[mm];
-    if (arr && arr.length) {
-      const meanPx = arr.reduce((a,b)=>a+b,0) / arr.length;
-      allPx.push(meanPx);
-      allMm.push(mm);
-    }
-  });
-  if (allPx.length < 1) { setInst('Need at least one calibration span.', 'red'); return; }
-  // Scale = mm per px; linear fit through origin: mm = scale * px
-  const sumPx2 = allPx.reduce((a,p)=>a+p*p,0);
-  const sumPxMm = allPx.reduce((a,p,i)=>a+p*allMm[i],0);
-  state.mmPerPx = sumPx2 > 1e-6 ? sumPxMm / sumPx2 : 0.1;
-  // Repeatability: std dev of px per mm for each span
-  const scales = [];
-  SPANS_MM.forEach(mm => {
-    const arr = state.calData[mm];
-    if (arr && arr.length >= 2) {
-      arr.forEach(px => scales.push(mm / px));
-    }
-  });
-  const meanScale = scales.length ? scales.reduce((a,b)=>a+b,0)/scales.length : state.mmPerPx;
-  const variance = scales.length ? scales.reduce((a,s)=>a+(s-meanScale)**2,0)/scales.length : 0;
-  state.repeatabilityStd = Math.sqrt(variance).toFixed(4);
+  const rawPx = state.calData.px;
+  if (!rawPx || rawPx < 1) { setInst('Calibration failed. Click 2 adjacent stud centers.', 'red'); return; }
+  state.mmPerPx = LEGO_STUD_MM / rawPx;
   state.step = 'measure_length';
-  state.measureAxis = state.axis;  // length uses calibration axis
-  setInst('Calibration done. Scale: ' + (state.mmPerPx).toFixed(4) + ' mm/px. Repeatability σ: ' + state.repeatabilityStd + '<br>Click <strong>2 stud centers</strong> for the brick <strong>length</strong> (along calibration axis).', 'green');
+  state.measureAxis = state.axis;
+  setInst('Calibration done. Scale: ' + (state.mmPerPx).toFixed(4) + ' mm/px.<br>Click <strong>2 stud centers</strong> for the brick <strong>length</strong> (along calibration axis).', 'green');
   state.pendingClicks = [];
 }
 
@@ -278,21 +242,11 @@ function handlePairComplete() {
 
   if (state.step === 'calibrate') {
     const raw = rawPx(p1, p2, state.axis);
-    const span = SPANS_MM[state.spanIdx];
-    if (!state.calData[span]) state.calData[span] = [];
-    state.calData[span].push(raw);
+    state.calData.px = raw;
     if (!state.calLines) state.calLines = [];
     state.calLines.push({ p1, p2 });
-    state.repeatIdx++;
-    if (state.repeatIdx >= REPEATS_PER_SPAN) {
-      state.repeatIdx = 0;
-      state.spanIdx++;
-      if (state.spanIdx >= SPANS_MM.length) {
-        finishCalibration();
-        return;
-      }
-    }
-    promptCalibration();
+    finishCalibration();
+    redraw();
   } else if (state.step === 'measure_length' || state.step === 'measure_width') {
     if (!state.calLines) state.calLines = [];
     state.calLines.push({ p1, p2 });
@@ -301,25 +255,26 @@ function handlePairComplete() {
 }
 
 function showFinalResults() {
-  const lenMm = (state.lengthPx * state.mmPerPx).toFixed(1);
-  const widMm = (state.widthPx * state.mmPerPx).toFixed(1);
+  const lenMm = state.lengthPx * state.mmPerPx;
+  const widMm = state.widthPx * state.mmPerPx;
+  // Map to horizontal/vertical: measureAxis is the calibration (length) axis
+  const horizMm = state.measureAxis === 'x' ? lenMm : widMm;
+  const vertMm = state.measureAxis === 'x' ? widMm : lenMm;
+  // Add one stud (8mm) per dimension to convert stud-center span → full brick size
+  const horizFull = horizMm + LEGO_STUD_MM;
+  const vertFull = vertMm + LEGO_STUD_MM;
+  const horizPx = state.measureAxis === 'x' ? state.lengthPx : state.widthPx;
+  const vertPx = state.measureAxis === 'x' ? state.widthPx : state.lengthPx;
   setInst('Measurements complete.', 'green');
   const res = document.getElementById('res');
   res.style.display = 'block';
-  let calRows = '';
-  SPANS_MM.forEach(mm => {
-    const arr = state.calData[mm] || [];
-    const mean = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(0) : '-';
-    calRows += `<div class="row"><span class="lbl">${mm} mm (${arr.length}×)</span><span class="note">mean ${mean} px</span></div>`;
-  });
+  const calPx = state.calData?.px ?? 0;
   res.innerHTML = `
-    <div class="row"><span class="lbl">Length</span><span class="val">${lenMm} mm</span></div>
-    <div class="row"><span class="lbl">Width</span><span class="val">${widMm} mm</span></div>
-    <div class="row"><span class="lbl">Length (px)</span><span class="note">${state.lengthPx.toFixed(0)} px</span></div>
-    <div class="row"><span class="lbl">Width (px)</span><span class="note">${state.widthPx.toFixed(0)} px</span></div>
+    <div class="row"><span class="lbl">Horizontal (full brick)</span><span class="val">${horizFull.toFixed(1)} mm</span></div>
+    <div class="row"><span class="lbl">Vertical (full brick)</span><span class="val">${vertFull.toFixed(1)} mm</span></div>
+    <div class="row"><span class="lbl">Stud span (H × V)</span><span class="note">${horizMm.toFixed(1)} × ${vertMm.toFixed(1)} mm</span></div>
     <div class="row"><span class="lbl">Scale</span><span class="note">${state.mmPerPx.toFixed(4)} mm/px</span></div>
-    <div class="row"><span class="lbl">Repeatability σ</span><span class="note">${state.repeatabilityStd}</span></div>
-    ${calRows}`;
+    <div class="row"><span class="lbl">Calibration</span><span class="note">${LEGO_STUD_MM} mm = ${calPx.toFixed(0)} px</span></div>`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
