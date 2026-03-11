@@ -46,31 +46,31 @@ def get_image_path() -> str:
     return path
 
 
-def run_calibration(img_array: np.ndarray) -> tuple:
+def run_calibration(img_array: np.ndarray, n_trials: int = 3) -> tuple:
     """
-    Run calibration step. User clicks 2 stud centers (8 mm).
-    Raw pixel output (axis-aligned) used as calibration input.
+    Run multi-trial baseline calibration (8 mm stud span).
+    Averages raw pixel output across trials for a robust px/mm ratio.
     """
     axis_choice = input("\nCalibration axis for stud span: horizontal (x) or vertical (y)? [x]: ").strip().lower() or "x"
     axis = "x" if axis_choice.startswith("x") or axis_choice == "h" else "y"
+
+    print(f"\n--- Baseline calibration: {n_trials} trials of 8 mm stud span ---")
     fig, ax = plt.subplots(figsize=(10, 8))
-    ref_raw_px, ref_mm, _ = calibrate_single(img_array, ax, axis)
-    raw_px_per_mm = ref_raw_px / ref_mm
-    print(f"\nCalibration: {ref_raw_px:.1f} raw px = {ref_mm:.1f} mm  →  {raw_px_per_mm:.2f} px/mm")
-
-    while True:
-        choice = input("\nKeep this calibration? (y/n): ").strip().lower()
-        if choice == "y":
-            break
-        if choice == "n":
-            ax.clear()
-            ref_raw_px, ref_mm, _ = calibrate_single(img_array, ax, axis)
-            raw_px_per_mm = ref_raw_px / ref_mm
-            print(f"New: {ref_raw_px:.1f} raw px = {ref_mm:.1f} mm")
-        else:
-            print("Please enter y or n.")
-
+    ref_raw_px, ref_mm, _, trial_px = calibrate_single(img_array, ax, axis, n_trials)
     plt.close(fig)
+
+    raw_px_per_mm = ref_raw_px / ref_mm
+    std_px = float(np.std(trial_px, ddof=1)) if n_trials > 1 else 0.0
+
+    print(f"\n  {'Trial':<8} {'Raw px':>10}")
+    print(f"  {'-'*18}")
+    for i, px in enumerate(trial_px):
+        print(f"  {i+1:<8} {px:>10.1f}")
+    print(f"  {'-'*18}")
+    print(f"  {'Mean':<8} {ref_raw_px:>10.1f}")
+    print(f"  {'Std dev':<8} {std_px:>10.1f}")
+    print(f"\n  Result: {ref_raw_px:.1f} ± {std_px:.1f} px = {ref_mm:.1f} mm  →  {raw_px_per_mm:.2f} px/mm")
+
     return (ref_raw_px, ref_mm, axis)
 
 

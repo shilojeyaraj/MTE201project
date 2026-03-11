@@ -16,12 +16,17 @@ STUD_SPACING_MM = 8.0
 CALIBRATION_SPANS_MM = [8.0, 16.0, 24.0]
 
 
-def calibrate_single(img_array: np.ndarray, ax: plt.Axes, axis: str = "x") -> tuple:
+def calibrate_single(
+    img_array: np.ndarray,
+    ax: plt.Axes,
+    axis: str = "x",
+    n_trials: int = 3,
+) -> tuple:
     """
-    Run single-point calibration: user clicks 2 stud centers (8.0 mm reference).
+    Run multi-trial baseline calibration: user clicks 2 stud centers per trial.
 
-    Raw pixel output (axis-aligned delta) is used as input to the calibration
-    equation. No Euclidean or analytical formula applied.
+    Each trial measures the same 8.0 mm stud span. The raw pixel values are
+    averaged across trials to reduce click-placement error.
 
     Parameters
     ----------
@@ -30,42 +35,67 @@ def calibrate_single(img_array: np.ndarray, ax: plt.Axes, axis: str = "x") -> tu
     ax : plt.Axes
         Matplotlib axes to display image and collect clicks.
     axis : str
-        'x' for horizontal stud span, 'y' for vertical. Raw pixel = |coord2 - coord1|.
+        'x' for horizontal stud span, 'y' for vertical.
+    n_trials : int
+        Number of repeated measurements (default 3).
 
     Returns
     -------
     tuple
-        (reference_raw_pixels, reference_mm, points_list)
+        (mean_raw_pixels, reference_mm, all_points, trial_raw_px_list)
     """
     axis_label = "horizontal (x)" if axis == "x" else "vertical (y)"
+    trial_raw_px = []
+    all_points = []
+
+    for t in range(n_trials):
+        ax.clear()
+        ax.imshow(img_array)
+        ax.set_title(
+            f"Baseline calibration — trial {t+1}/{n_trials}\n"
+            f"Click 2 stud centers ({axis_label}, known = 8.0 mm)",
+            fontsize=10,
+        )
+        ax.axis("on")
+        plt.draw()
+
+        pts = plt.ginput(2, timeout=-1, show_clicks=True)
+        if len(pts) != 2:
+            raise ValueError(f"Exactly 2 points required (trial {t+1}).")
+
+        p1, p2 = pts[0], pts[1]
+        raw_px = raw_pixel_measurement(p1, p2, axis)
+        trial_raw_px.append(raw_px)
+        all_points.append((p1, p2))
+
+        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "r-", linewidth=1.5, alpha=0.6)
+        ax.plot(p1[0], p1[1], "go", markersize=6)
+        ax.plot(p2[0], p2[1], "go", markersize=6)
+        px_per_mm = raw_px / STUD_SPACING_MM
+        ax.set_title(
+            f"Trial {t+1}/{n_trials}: {raw_px:.1f} px  →  {px_per_mm:.2f} px/mm",
+            fontsize=9,
+        )
+        plt.draw()
+
+    mean_raw_px = float(np.mean(trial_raw_px))
+    std_raw_px = float(np.std(trial_raw_px, ddof=1)) if n_trials > 1 else 0.0
+    mean_px_per_mm = mean_raw_px / STUD_SPACING_MM
+
+    ax.clear()
     ax.imshow(img_array)
+    for p1, p2 in all_points:
+        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "r-", linewidth=1, alpha=0.4)
+        ax.plot(p1[0], p1[1], "go", markersize=5, alpha=0.5)
+        ax.plot(p2[0], p2[1], "go", markersize=5, alpha=0.5)
     ax.set_title(
-        f"Calibration: Click 2 stud centers ({axis_label}, known = 8.0 mm)",
-        fontsize=10,
-    )
-    ax.axis("on")
-    plt.draw()
-
-    pts = plt.ginput(2, timeout=-1, show_clicks=True)
-    if len(pts) != 2:
-        raise ValueError("Exactly 2 points required for calibration.")
-
-    p1, p2 = pts[0], pts[1]
-    raw_px = raw_pixel_measurement(p1, p2, axis)
-    px_per_mm = raw_px / STUD_SPACING_MM
-
-    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "r-", linewidth=2, label="Calibration span")
-    ax.plot(p1[0], p1[1], "go", markersize=8, label="Point 1")
-    ax.plot(p2[0], p2[1], "go", markersize=8, label="Point 2")
-    ax.legend(loc="upper right", fontsize=8)
-    ax.set_title(
-        f"Raw pixels ({axis}): {raw_px:.1f} px  →  {raw_px / px_per_mm:.2f} mm  (ref 8.0 mm)\n"
-        f"Ratio: {px_per_mm:.2f} px/mm",
+        f"Baseline calibration ({n_trials} trials): "
+        f"{mean_raw_px:.1f} ± {std_raw_px:.1f} px  →  {mean_px_per_mm:.2f} px/mm",
         fontsize=9,
     )
     plt.draw()
 
-    return (raw_px, STUD_SPACING_MM, [p1, p2])
+    return (mean_raw_px, STUD_SPACING_MM, all_points, trial_raw_px)
 
 
 def calibrate_extended(
