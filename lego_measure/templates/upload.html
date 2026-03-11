@@ -31,17 +31,11 @@
     }
     .drop:hover, .drop.over { border-color: #ed8936; background: rgba(237,137,54,.08); }
     .drop input { display: none; }
-    .drop .ico { font-size: 2.5rem; margin-bottom: .4rem; }
-    .drop .hint { color: #888; font-size: .82rem; margin-top: .3rem; }
 
-    canvas { width: 100%; display: block; border-radius: 10px; margin-bottom: .85rem; }
-
-    .spinner {
-      display: flex; align-items: center; gap: .6rem;
-      color: #888; font-size: .88rem; margin-bottom: .85rem;
+    canvas {
+      width: 100%; display: block; border-radius: 10px; margin-bottom: .85rem;
+      cursor: crosshair; touch-action: none;
     }
-    .spinner svg { animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     .results {
       background: #16213e; border-radius: 10px;
@@ -59,241 +53,273 @@
     .btn {
       padding: .5rem 1rem; border-radius: 7px; border: none;
       cursor: pointer; font-size: .87rem; font-weight: 500;
-      background: #2d3748; color: #eaeaea; transition: opacity .15s;
-      margin-bottom: .85rem;
+      background: #2d3748; color: #eaeaea; margin-right: .5rem; margin-bottom: .5rem;
     }
-    .btn:active { opacity: .7; }
+    .btn-primary { background: #ed8936; color: #1a1a2e; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
 <div class="wrap">
   <h1>LEGO Brick Measurer</h1>
-  <p class="sub">Upload a photo — dimensions appear automatically</p>
+  <p class="sub">Upload a photo, then click to calibrate and measure by pixel count</p>
 
   <div class="card" id="inst">
-    Take a <strong>top-down photo</strong> with the <strong>studs facing up</strong>,
-    on a plain <strong>white or dark</strong> background. Then upload it below.
+    Upload a <strong>top-down photo</strong> of a LEGO brick (studs up) on a plain background.
   </div>
 
   <div class="drop" id="drop" onclick="document.getElementById('fi').click()">
     <input type="file" id="fi" accept="image/*">
-    <div class="ico">📷</div>
-    <div>Tap to take or select a photo</div>
-    <div class="hint">Straight down · studs up · white/dark background · good lighting</div>
+    <div style="font-size:2.5rem;margin-bottom:.4rem">📷</div>
+    <div>Tap to upload photo</div>
   </div>
 
   <canvas id="cv" style="display:none"></canvas>
 
-  <div class="spinner" id="spin" style="display:none">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2">
-      <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15"/>
-    </svg>
-    Detecting studs…
+  <div id="btnRow" style="display:none;margin-bottom:.85rem">
+    <button class="btn" onclick="reset()">Start over</button>
   </div>
 
   <div class="results" id="res"></div>
-
-  <button class="btn" id="again" style="display:none" onclick="reset()">Try another photo</button>
 </div>
 
-<!-- OpenCV.js loaded from official CDN -->
-<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onCvLoad()"></script>
 <script>
-let cvOk = false, pendingImg = null;
+// ── Constants (LEGO spec) ───────────────────────────────────────────────────────
+const LEGO_STUD_MM = 8.0;
+const SPANS_MM = [8.0, 16.0, 24.0];  // 1, 2, 3 stud spacings
+const REPEATS_PER_SPAN = 5;
 
-function onCvLoad() { cvOk = true; if (pendingImg) run(pendingImg); }
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = {
+  img: null, scale: 1,           // img ref and display scale
+  spanIdx: 0, repeatIdx: 0,     // calibration progress
+  calData: {},
+  calLines: [],
+  axis: 'x',
+  pendingClicks: [],            // [p1, p2] for current pair
+  step: 'upload',               // upload | calibrate | measure_length | measure_width | done
+  lengthPx: null, widthPx: null
+};
 
-// ── File loading ──────────────────────────────────────────────────────────────
-function loadFile(f) {
+// ── File load ──────────────────────────────────────────────────────────────────
+document.getElementById('fi').onchange = e => {
+  const f = e.target.files[0];
   if (!f || !f.type.startsWith('image/')) return;
   const img = new Image();
   img.onload = () => {
     document.getElementById('drop').style.display = 'none';
-    drawPreview(img);
-    if (cvOk) run(img); else { pendingImg = img; showSpin(true); setInst('Loading image analysis library…', ''); }
+    state.img = img;
+    initCanvas(img);
+    promptAxisChoice();
   };
   img.src = URL.createObjectURL(f);
-}
+};
 
-document.getElementById('fi').onchange = e => loadFile(e.target.files[0]);
 const drop = document.getElementById('drop');
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
-drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); loadFile(e.dataTransfer.files[0]); };
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) {
+    const img = new Image();
+    img.onload = () => { document.getElementById('drop').style.display = 'none'; state.img = img; initCanvas(img); promptAxisChoice(); };
+    img.src = URL.createObjectURL(f);
+  }
+};
 
-// ── Canvas preview ────────────────────────────────────────────────────────────
-function drawPreview(img) {
-  const cv2 = document.getElementById('cv');
+// ── Canvas ────────────────────────────────────────────────────────────────────
+function initCanvas(img) {
+  const cv = document.getElementById('cv');
   const maxW = Math.min(548, document.querySelector('.wrap').clientWidth);
-  const scale = maxW / img.naturalWidth;
-  cv2.width  = img.naturalWidth  * scale;
-  cv2.height = img.naturalHeight * scale;
-  cv2.style.display = 'block';
-  cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
-  cv2._dispScale = scale;
-  cv2._img = img;
+  state.scale = maxW / img.naturalWidth;
+  cv.width = img.naturalWidth * state.scale;
+  cv.height = img.naturalHeight * state.scale;
+  cv.style.display = 'block';
+  redraw();
+  cv.onclick = onCanvasClick;
+  document.getElementById('btnRow').style.display = 'flex';
 }
 
-// ── Main analysis ─────────────────────────────────────────────────────────────
-function run(img) {
-  showSpin(true);
-  setInst('Detecting studs…', '');
-  // Run in next tick so spinner renders first
-  setTimeout(() => {
-    try { analyze(img); }
-    catch (e) { showError('Analysis crashed: ' + e.message); }
-  }, 50);
-}
-
-function analyze(img) {
-  const MAX = 1400;
-  const sc = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
-  const W  = Math.round(img.naturalWidth  * sc);
-  const H  = Math.round(img.naturalHeight * sc);
-
-  const oc = Object.assign(document.createElement('canvas'), { width: W, height: H });
-  oc.getContext('2d').drawImage(img, 0, 0, W, H);
-
-  const src  = cv.imread(oc);
-  const gray = new cv.Mat();
-  const eq   = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  src.delete();
-
-  // Step 1: CLAHE — adaptive contrast to recover dark/shadowed studs
-  const clahe = new cv.CLAHE(3.0, new cv.Size(8, 8));
-  clahe.apply(gray, eq);
-  clahe.delete(); gray.delete();
-
-  // Step 2: Morphological tophat — isolates small circular bright features (studs)
-  // against any background. Kernel must be larger than one stud.
-  const dim     = Math.min(W, H);
-  const kSize   = Math.max(15, Math.floor(dim * 0.07) | 1); // odd, ~1.5× expected stud diameter
-  const kernel  = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(kSize, kSize));
-  const tophat  = new cv.Mat();
-  cv.morphologyEx(eq, tophat, cv.MORPH_TOPHAT, kernel);
-  kernel.delete();
-
-  // Blend: eq provides global structure, tophat emphasises studs
-  const enhanced = new cv.Mat();
-  cv.addWeighted(eq, 0.5, tophat, 1.0, 0, enhanced);
-  tophat.delete(); eq.delete();
-
-  // Step 3: Gaussian blur before Hough (reduces noise-induced false circles)
-  const blur = new cv.Mat();
-  cv.GaussianBlur(enhanced, blur, new cv.Size(7, 7), 1.5, 1.5);
-  enhanced.delete();
-
-  // Step 4: HoughCircles — try progressively lower thresholds
-  // minDist based on expected stud spacing (studs can't overlap)
-  const minR   = Math.max(4,  Math.floor(dim * 0.008));
-  const maxR   = Math.floor(dim * 0.10);
-  const minDst = Math.max(20, Math.floor(dim * 0.022));
-
-  let best = null;
-  for (const [p1, p2] of [[80,30],[70,22],[60,16],[50,11]]) {
-    const c = new cv.Mat();
-    cv.HoughCircles(blur, c, cv.HOUGH_GRADIENT, 1, minDst, p1, p2, minR, maxR);
-    // Accept if we got at least 4 circles and not an explosion of false positives
-    if (c.cols >= 4 && c.cols <= 48) { if (best) best.delete(); best = c; break; }
-    if (c.cols >= 2 && (!best || c.cols > best.cols) && c.cols <= 48) {
-      if (best) best.delete(); best = c;
-    } else { c.delete(); }
-  }
-  blur.delete();
-
-  if (!best || best.cols < 2) {
-    if (best) best.delete();
-    showError('Could not detect studs automatically.\n\nTips:\n• Shoot straight down, studs facing up\n• Use a plain white or dark background\n• Good even lighting — avoid harsh shadows\n• Move closer so the brick fills most of the frame');
-    return;
-  }
-
-  // Step 5: Extract and filter circles by consistent radius
-  // (LEGO studs are identical — non-stud circles have different radii)
-  const raw = [];
-  for (let i = 0; i < Math.min(best.cols, 48); i++)
-    raw.push({ x: best.data32F[i*3], y: best.data32F[i*3+1], r: best.data32F[i*3+2] });
-  best.delete();
-
-  const radii = raw.map(c => c.r).sort((a,b) => a-b);
-  const medR  = radii[Math.floor(radii.length / 2)];
-  let studs   = raw.filter(s => Math.abs(s.r - medR) / medR < 0.30);
-  if (studs.length < 2) { showError('Too few uniform circles found. Try better lighting.'); return; }
-
-  // Step 6: Spatial clustering — keep only the main cluster (the brick)
-  // Eliminates stray circles from background or image borders
-  let cx = studs.reduce((a,s)=>a+s.x,0)/studs.length;
-  let cy = studs.reduce((a,s)=>a+s.y,0)/studs.length;
-  const dists  = studs.map(s => Math.hypot(s.x-cx, s.y-cy));
-  const medDst = dists.slice().sort((a,b)=>a-b)[Math.floor(dists.length/2)];
-  studs = studs.filter((_,i) => dists[i] < medDst * 2.5);
-  if (studs.length < 2) { showError('Could not isolate brick. Use a plain background.'); return; }
-
-  // Step 7: Stud spacing from median nearest-neighbor distance
-  // Using NN distance (not radius) because LEGO pitch (8mm) is machined to ±0.01mm tolerance
-  const NN_MIN  = Math.max(8, dim * 0.015);
-  const nns = studs
-    .map(a => Math.min(...studs.filter(b=>b!==a).map(b=>Math.hypot(a.x-b.x,a.y-b.y))))
-    .filter(d => d >= NN_MIN)
-    .sort((a,b) => a-b);
-  if (nns.length < 1) { showError('Could not measure stud spacing. Ensure ≥2 studs are visible.'); return; }
-  const spacingPx = nns[Math.floor(nns.length / 2)]; // median = robust to outliers
-
-  // Step 8: Grid snapping — snap each detected stud to nearest integer grid position.
-  // This is the key step: handles partial detection correctly.
-  // Even if only 3/8 studs are found, their grid positions reveal the full grid extent.
-  const xs = studs.map(s => s.x), ys = studs.map(s => s.y);
-  const ox = Math.min(...xs), oy = Math.min(...ys);
-  const snapped = studs.map(s => ({
-    gi: Math.round((s.x - ox) / spacingPx),
-    gj: Math.round((s.y - oy) / spacingPx),
-  }));
-  const nX = Math.max(1, Math.min(12, Math.max(...snapped.map(p=>p.gi)) + 1));
-  const nY = Math.max(1, Math.min(12, Math.max(...snapped.map(p=>p.gj)) + 1));
-
-  // Step 9: LEGO outer dimensions (official spec, unchanged since 1960s)
-  // Formula: n_studs × 8.0mm − 0.2mm = outer edge-to-edge length
-  const longMm  = +(Math.max(nX,nY) * 8.0 - 0.2).toFixed(1);
-  const shortMm = +(Math.min(nX,nY) * 8.0 - 0.2).toFixed(1);
-
-  annotate(studs, medR, sc);
-  showSpin(false);
-  showResults(Math.max(nX,nY), Math.min(nX,nY), longMm, shortMm, studs.length);
-}
-
-// ── Overlay detected studs on preview canvas ──────────────────────────────────
-function annotate(studs, medR, analysisScale) {
-  const cv2 = document.getElementById('cv');
-  const ctx  = cv2.getContext('2d');
-  const disp = cv2._dispScale;
-  // analysisScale: img→analysis pixels; disp: img→canvas pixels
-  const factor = disp / analysisScale;
-
-  studs.forEach(s => {
+function redraw() {
+  if (!state.img) return;
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(state.img, 0, 0, cv.width, cv.height);
+  // Draw completed calibration/measure lines (faint)
+  (state.calLines || []).forEach(({p1,p2}) => {
+    ctx.strokeStyle = 'rgba(237,137,54,0.4)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(s.x * factor, s.y * factor, s.r * factor, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ed8936';
-    ctx.lineWidth = Math.max(2, cv2.width * 0.004);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
   });
+  // Current pair
+  if (state.pendingClicks.length >= 1) {
+    ctx.fillStyle = '#48bb78';
+    state.pendingClicks.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  if (state.pendingClicks.length === 2) {
+    const p1 = state.pendingClicks[0], p2 = state.pendingClicks[1];
+    ctx.strokeStyle = '#ed8936';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
 }
 
-// ── Results ───────────────────────────────────────────────────────────────────
-function showResults(nX, nY, longMm, shortMm, studCount) {
-  setInst(`Detected <strong>${studCount} studs</strong> — ${nX}×${nY} grid`, 'green');
+function onCanvasClick(e) {
+  if (!['calibrate', 'measure_length', 'measure_width'].includes(state.step)) return;
+  const cv = document.getElementById('cv');
+  const rect = cv.getBoundingClientRect();
+  const scaleX = cv.width / rect.width;
+  const scaleY = cv.height / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  state.pendingClicks.push({ x, y });
+  redraw();
+  if (state.pendingClicks.length >= 2) handlePairComplete();
+}
+
+// ── Raw pixel measurement (axis-aligned) ────────────────────────────────────────
+function rawPx(p1, p2, axis) {
+  if (axis === 'x') return Math.abs(p2.x - p1.x);
+  return Math.abs(p2.y - p1.y);
+}
+
+// ── Axis choice ──────────────────────────────────────────────────────────────
+function promptAxisChoice() {
+  setInst('Select calibration axis:<br><button class="btn btn-primary" onclick="startCalibration(\'x\')">Horizontal (x)</button> <button class="btn" onclick="startCalibration(\'y\')">Vertical (y)</button>', 'blue');
+}
+
+function startCalibration(axis) {
+  state.axis = axis;
+  state.step = 'calibrate';
+  state.spanIdx = 0;
+  state.repeatIdx = 0;
+  state.calData = { 8: [], 16: [], 24: [] };
+  state.calLines = [];
+  promptCalibration();
+}
+
+// ── Calibration ───────────────────────────────────────────────────────────────
+function promptCalibration() {
+  const span = SPANS_MM[state.spanIdx];
+  const rep = state.repeatIdx + 1;
+  setInst(
+    `Calibration <strong>${span} mm</strong> — repeat ${rep}/${REPEATS_PER_SPAN}<br>` +
+    `Click <strong>2 stud centers</strong> along the ${state.axis === 'x' ? 'horizontal' : 'vertical'} axis.`,
+    'blue'
+  );
+  state.pendingClicks = [];
+}
+
+function finishCalibration() {
+  // Compute scale: mm/px from each span; use mean of all (8,16,24) for robustness
+  const allPx = [], allMm = [];
+  SPANS_MM.forEach(mm => {
+    const arr = state.calData[mm];
+    if (arr && arr.length) {
+      const meanPx = arr.reduce((a,b)=>a+b,0) / arr.length;
+      allPx.push(meanPx);
+      allMm.push(mm);
+    }
+  });
+  if (allPx.length < 1) { setInst('Need at least one calibration span.', 'red'); return; }
+  // Scale = mm per px; linear fit through origin: mm = scale * px
+  const sumPx2 = allPx.reduce((a,p)=>a+p*p,0);
+  const sumPxMm = allPx.reduce((a,p,i)=>a+p*allMm[i],0);
+  state.mmPerPx = sumPx2 > 1e-6 ? sumPxMm / sumPx2 : 0.1;
+  // Repeatability: std dev of px per mm for each span
+  const scales = [];
+  SPANS_MM.forEach(mm => {
+    const arr = state.calData[mm];
+    if (arr && arr.length >= 2) {
+      arr.forEach(px => scales.push(mm / px));
+    }
+  });
+  const meanScale = scales.length ? scales.reduce((a,b)=>a+b,0)/scales.length : state.mmPerPx;
+  const variance = scales.length ? scales.reduce((a,s)=>a+(s-meanScale)**2,0)/scales.length : 0;
+  state.repeatabilityStd = Math.sqrt(variance).toFixed(4);
+  state.step = 'measure_length';
+  state.measureAxis = state.axis;  // length uses calibration axis
+  setInst('Calibration done. Scale: ' + (state.mmPerPx).toFixed(4) + ' mm/px. Repeatability σ: ' + state.repeatabilityStd + '<br>Click <strong>2 stud centers</strong> for the brick <strong>length</strong> (along calibration axis).', 'green');
+  state.pendingClicks = [];
+}
+
+// ── Measurement ───────────────────────────────────────────────────────────────
+function handleMeasureComplete(p1, p2) {
+  const axis = state.step === 'measure_length' ? state.measureAxis : (state.measureAxis === 'x' ? 'y' : 'x');
+  const raw = axis === 'x' ? Math.abs(p2.x - p1.x) : Math.abs(p2.y - p1.y);
+  if (state.step === 'measure_length') {
+    state.lengthPx = raw;
+    state.step = 'measure_width';
+    setInst('Click <strong>2 stud centers</strong> for the brick <strong>width</strong> (perpendicular to length).', 'blue');
+  } else {
+    state.widthPx = raw;
+    state.step = 'done';
+    showFinalResults();
+  }
+  redraw();
+}
+
+function handlePairComplete() {
+  const p1 = state.pendingClicks[0], p2 = state.pendingClicks[1];
+  if (!p1 || !p2) return;
+  state.pendingClicks = [];
+  redraw();
+
+  if (state.step === 'calibrate') {
+    const raw = rawPx(p1, p2, state.axis);
+    const span = SPANS_MM[state.spanIdx];
+    if (!state.calData[span]) state.calData[span] = [];
+    state.calData[span].push(raw);
+    if (!state.calLines) state.calLines = [];
+    state.calLines.push({ p1, p2 });
+    state.repeatIdx++;
+    if (state.repeatIdx >= REPEATS_PER_SPAN) {
+      state.repeatIdx = 0;
+      state.spanIdx++;
+      if (state.spanIdx >= SPANS_MM.length) {
+        finishCalibration();
+        return;
+      }
+    }
+    promptCalibration();
+  } else if (state.step === 'measure_length' || state.step === 'measure_width') {
+    if (!state.calLines) state.calLines = [];
+    state.calLines.push({ p1, p2 });
+    handleMeasureComplete(p1, p2);
+  }
+}
+
+function showFinalResults() {
+  const lenMm = (state.lengthPx * state.mmPerPx).toFixed(1);
+  const widMm = (state.widthPx * state.mmPerPx).toFixed(1);
+  setInst('Measurements complete.', 'green');
   const res = document.getElementById('res');
   res.style.display = 'block';
+  let calRows = '';
+  SPANS_MM.forEach(mm => {
+    const arr = state.calData[mm] || [];
+    const mean = arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(0) : '-';
+    calRows += `<div class="row"><span class="lbl">${mm} mm (${arr.length}×)</span><span class="note">mean ${mean} px</span></div>`;
+  });
   res.innerHTML = `
-    <div class="row"><span class="lbl">Length</span><span class="val">${longMm} mm</span></div>
-    <div class="row"><span class="lbl">Width</span><span class="val">${shortMm} mm</span></div>
-    <div class="row"><span class="lbl">Height</span><span class="note">Take a side-on photo to measure height</span></div>`;
-  document.getElementById('again').style.display = 'block';
-}
-
-function showError(msg) {
-  showSpin(false);
-  setInst(msg.replace(/\n/g, '<br>'), 'red');
-  document.getElementById('again').style.display = 'block';
+    <div class="row"><span class="lbl">Length</span><span class="val">${lenMm} mm</span></div>
+    <div class="row"><span class="lbl">Width</span><span class="val">${widMm} mm</span></div>
+    <div class="row"><span class="lbl">Length (px)</span><span class="note">${state.lengthPx.toFixed(0)} px</span></div>
+    <div class="row"><span class="lbl">Width (px)</span><span class="note">${state.widthPx.toFixed(0)} px</span></div>
+    <div class="row"><span class="lbl">Scale</span><span class="note">${state.mmPerPx.toFixed(4)} mm/px</span></div>
+    <div class="row"><span class="lbl">Repeatability σ</span><span class="note">${state.repeatabilityStd}</span></div>
+    ${calRows}`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -302,17 +328,15 @@ function setInst(html, type) {
   el.innerHTML = html;
   el.className = 'card' + (type === 'blue' ? ' blue' : type === 'green' ? ' green' : type === 'red' ? ' red' : '');
 }
-function showSpin(on) { document.getElementById('spin').style.display = on ? 'flex' : 'none'; }
 
 function reset() {
   document.getElementById('drop').style.display = 'block';
   document.getElementById('cv').style.display = 'none';
   document.getElementById('res').style.display = 'none';
-  document.getElementById('again').style.display = 'none';
-  showSpin(false);
-  setInst('Take a <strong>top-down photo</strong> with the <strong>studs facing up</strong>, on a plain white or dark background. Then upload it below.', '');
+  document.getElementById('btnRow').style.display = 'none';
+  setInst('Upload a <strong>top-down photo</strong> of a LEGO brick (studs up) on a plain background.', '');
   document.getElementById('fi').value = '';
-  pendingImg = null;
+  state = { img: null, step: 'upload' };
 }
 </script>
 </body>
