@@ -50,6 +50,13 @@
     .results .val { color: #48bb78; font-weight: 700; font-size: 1.1rem; }
     .results .note { color: #666; font-size: .8rem; }
 
+    .cal-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin: .4rem 0; }
+    .cal-table th { color: #aaa; text-align: left; padding: .25rem .4rem; border-bottom: 1px solid #2d3748; }
+    .cal-table td { padding: .25rem .4rem; border-bottom: 1px solid #2d3748; }
+    .cal-table .span-header { color: #ed8936; font-weight: 600; padding-top: .5rem; }
+    .cal-table .avg-row td { color: #48bb78; font-weight: 600; }
+    .section-title { color: #eaeaea; font-weight: 600; font-size: .92rem; margin: .7rem 0 .3rem; }
+
     .btn {
       padding: .5rem 1rem; border-radius: 7px; border: none;
       cursor: pointer; font-size: .87rem; font-weight: 500;
@@ -89,6 +96,7 @@ const STUD_MM = 8.0;
 const CAL_SPANS = [8, 16, 24];
 const TRIALS_PER_SPAN = 3;
 const TOTAL_CAL_PAIRS = CAL_SPANS.length * TRIALS_PER_SPAN; // 9
+const MEAS_TRIALS = 3;
 
 // ── State ────────────────────────────────────────────────────────────────────
 let S = {
@@ -98,11 +106,14 @@ let S = {
   pending: [],
   step: 'upload',
   // calibration tracking
-  calSpanIdx: 0,      // which span we're on (0,1,2 → 8,16,24)
-  calTrialIdx: 0,     // which trial within this span (0,1,2)
+  calSpanIdx: 0,
+  calTrialIdx: 0,
   calTrials: {},       // { 8: [px,px,px], 16: [...], 24: [...] }
-  // measurement
-  lengthPx: null, widthPx: null, measureAxis: 'x',
+  // measurement trials
+  measTrialIdx: 0,     // current measurement trial (0-based)
+  measTrials: [],      // [{lengthPx, widthPx}, ...]
+  curLengthPx: null,
+  measureAxis: 'x',
 };
 
 // ── File load ────────────────────────────────────────────────────────────────
@@ -306,43 +317,87 @@ function finishCalibration() {
     `<span style="font-size:.82rem;color:#aaa">` +
     `Scale: ${pxPerMm.toFixed(2)} px/mm (from ${TRIALS_PER_SPAN}×${CAL_SPANS.length} trials)</span>` +
     `<table style="width:100%;margin:.5rem 0;font-size:.82rem;border-collapse:collapse">` +
-    `<tr style="color:#aaa"><td>Span</td><td>Mean</td><td>Std dev</td></tr>`;
+    `<tr style="color:#aaa"><td>Span</td>`;
+  for (let t = 1; t <= TRIALS_PER_SPAN; t++) html += `<td>T${t} (mm)</td>`;
+  html += `<td>Mean</td><td>Std dev</td></tr>`;
   CAL_SPANS.forEach((span, i) => {
-    html += `<tr><td>${span} mm</td><td>${measuredMm[i].toFixed(2)} mm</td>` +
-      `<td>± ${measStd[i].toFixed(3)} mm</td></tr>`;
+    const trials = S.calTrials[span];
+    const mmTrials = trials.map(px => px / pxPerMm);
+    html += `<tr><td>${span} mm</td>`;
+    mmTrials.forEach(v => { html += `<td>${v.toFixed(2)}</td>`; });
+    html += `<td><strong>${measuredMm[i].toFixed(2)}</strong></td>` +
+      `<td>± ${measStd[i].toFixed(3)}</td></tr>`;
   });
   html += `</table>` +
-    `Now click <strong>2 stud centers</strong> for the brick <strong>length</strong> ` +
-    `(along the ${S.axis === 'x' ? 'horizontal' : 'vertical'} axis).`;
+    `Now starting <strong>${MEAS_TRIALS} measurement trials</strong>. ` +
+    `Each trial = length + width clicks.`;
   setInst(html, 'green');
 
-  S.step = 'measure_length';
   S.measureAxis = S.axis;
+  S.measTrialIdx = 0;
+  S.measTrials = [];
+  S.curLengthPx = null;
   S.pending = [];
+
+  setTimeout(promptMeasTrial, 1200);
 }
 
-// ── Measurement ──────────────────────────────────────────────────────────────
+function promptMeasTrial() {
+  const t = S.measTrialIdx + 1;
+  const axLbl = S.measureAxis === 'x' ? 'horizontal' : 'vertical';
+  const totalPairs = MEAS_TRIALS * 2;
+  const pairNum = S.measTrialIdx * 2 + 1;
+  S.step = 'measure_length';
+  S.curLengthPx = null;
+  S.pending = [];
+  setInst(
+    `<strong>Measurement trial ${t}/${MEAS_TRIALS}</strong> [${pairNum}/${totalPairs}]<br>` +
+    `Click <strong>2 stud centers</strong> for the brick <strong>length</strong> (${axLbl} axis).`,
+    'blue'
+  );
+}
+
+// ── Measurement (multi-trial) ────────────────────────────────────────────────
 function handleMeasure(p1, p2) {
   const axis = S.step === 'measure_length'
     ? S.measureAxis
     : (S.measureAxis === 'x' ? 'y' : 'x');
   const raw = rawPx(p1, p2, axis);
-  S.lines.push({p1, p2, color: 'rgba(252,129,129,0.6)'});
+
+  const trialColors = ['rgba(252,129,129,0.5)', 'rgba(129,199,252,0.5)', 'rgba(186,252,129,0.5)'];
+  S.lines.push({p1, p2, color: trialColors[S.measTrialIdx % trialColors.length]});
+
+  const t = S.measTrialIdx + 1;
+  const totalPairs = MEAS_TRIALS * 2;
 
   if (S.step === 'measure_length') {
-    S.lengthPx = raw;
+    S.curLengthPx = raw;
     S.step = 'measure_width';
     const perpAxis = S.measureAxis === 'x' ? 'vertical' : 'horizontal';
+    const pairNum = S.measTrialIdx * 2 + 2;
     setInst(
-      `Length recorded: ${(raw * S.mmPerPx).toFixed(2)} mm (stud span).<br>` +
-      `Click <strong>2 stud centers</strong> for the brick <strong>width</strong> (${perpAxis} axis).`,
+      `<strong>Trial ${t}/${MEAS_TRIALS}</strong> [${pairNum}/${totalPairs}] — ` +
+      `Length: ${(raw * S.mmPerPx).toFixed(2)} mm<br>` +
+      `Now click <strong>2 stud centers</strong> for <strong>width</strong> (${perpAxis} axis).`,
       'blue'
     );
   } else {
-    S.widthPx = raw;
-    S.step = 'done';
-    showResults();
+    S.measTrials.push({ lengthPx: S.curLengthPx, widthPx: raw });
+    S.measTrialIdx++;
+
+    if (S.measTrialIdx < MEAS_TRIALS) {
+      setInst(
+        `Trial ${t} done — L: ${(S.curLengthPx * S.mmPerPx).toFixed(2)} mm, ` +
+        `W: ${(raw * S.mmPerPx).toFixed(2)} mm. Next trial...`,
+        'green'
+      );
+      setTimeout(promptMeasTrial, 800);
+    } else {
+      S.step = 'done';
+      showResults();
+    }
   }
+  S.pending = [];
   redraw();
 }
 
@@ -360,25 +415,198 @@ function handlePair() {
 
 // ── Results ──────────────────────────────────────────────────────────────────
 function showResults() {
-  const lenMm = S.lengthPx * S.mmPerPx;
-  const widMm = S.widthPx * S.mmPerPx;
-  const horizMm = S.measureAxis === 'x' ? lenMm : widMm;
-  const vertMm  = S.measureAxis === 'x' ? widMm : lenMm;
-  const horizFull = horizMm + STUD_MM;
-  const vertFull  = vertMm + STUD_MM;
-
   const cr = S.calResult;
-  setInst('Measurements complete.', 'green');
+  setInst('All trials complete. Scroll down for full data.', 'green');
+
+  // Compute per-trial measurement mm values
+  const lenMms = S.measTrials.map(t => t.lengthPx * S.mmPerPx);
+  const widMms = S.measTrials.map(t => t.widthPx * S.mmPerPx);
+  const horizMms = S.measureAxis === 'x' ? lenMms : widMms;
+  const vertMms  = S.measureAxis === 'x' ? widMms : lenMms;
+  const horizFulls = horizMms.map(v => v + STUD_MM);
+  const vertFulls  = vertMms.map(v => v + STUD_MM);
+
+  const meanHF = mean(horizFulls), stdHF = stddev(horizFulls);
+  const meanVF = mean(vertFulls),  stdVF = stddev(vertFulls);
+  const meanHS = mean(horizMms),   stdHS = stddev(horizMms);
+  const meanVS = mean(vertMms),    stdVS = stddev(vertMms);
+
+  // Build measurement trials table
+  let measRows = '';
+  S.measTrials.forEach((t, i) => {
+    const lMm = t.lengthPx * S.mmPerPx;
+    const wMm = t.widthPx * S.mmPerPx;
+    const hSpan = S.measureAxis === 'x' ? lMm : wMm;
+    const vSpan = S.measureAxis === 'x' ? wMm : lMm;
+    measRows += `<tr><td>Trial ${i+1}</td>` +
+      `<td>${(hSpan + STUD_MM).toFixed(2)}</td><td>${(vSpan + STUD_MM).toFixed(2)}</td>` +
+      `<td>${hSpan.toFixed(2)}</td><td>${vSpan.toFixed(2)}</td></tr>`;
+  });
+  measRows += `<tr class="avg-row"><td>Mean</td>` +
+    `<td>${meanHF.toFixed(2)}</td><td>${meanVF.toFixed(2)}</td>` +
+    `<td>${meanHS.toFixed(2)}</td><td>${meanVS.toFixed(2)}</td></tr>`;
+  measRows += `<tr class="avg-row"><td>Std dev</td>` +
+    `<td>± ${stdHF.toFixed(3)}</td><td>± ${stdVF.toFixed(3)}</td>` +
+    `<td>± ${stdHS.toFixed(3)}</td><td>± ${stdVS.toFixed(3)}</td></tr>`;
+
+  // Build per-trial calibration table
+  let calRows = '';
+  CAL_SPANS.forEach((span) => {
+    const pxTrials = S.calTrials[span];
+    const mmTrials = pxTrials.map(px => px / S.pxPerMm);
+    const meanPx = mean(pxTrials);
+    const meanMm = mean(mmTrials);
+    const stdMm = stddev(mmTrials);
+    const stdPx = stddev(pxTrials);
+    const deviation = meanMm - span;
+
+    calRows += `<tr><td colspan="4" class="span-header">${span} mm span (${span/STUD_MM} stud${span>8?'s':''})</td></tr>`;
+    pxTrials.forEach((px, t) => {
+      calRows += `<tr><td style="padding-left:1rem">Trial ${t+1}</td>` +
+        `<td>${px.toFixed(1)}</td><td>${mmTrials[t].toFixed(3)}</td>` +
+        `<td>${(mmTrials[t] - span).toFixed(3)}</td></tr>`;
+    });
+    calRows += `<tr class="avg-row"><td style="padding-left:1rem">Mean ± σ</td>` +
+      `<td>${meanPx.toFixed(1)} ± ${stdPx.toFixed(1)}</td>` +
+      `<td>${meanMm.toFixed(3)} ± ${stdMm.toFixed(3)}</td>` +
+      `<td>${deviation >= 0 ? '+' : ''}${deviation.toFixed(3)}</td></tr>`;
+  });
 
   const res = document.getElementById('res');
   res.style.display = 'block';
   res.innerHTML = `
-    <div class="row"><span class="lbl">Horizontal (full brick)</span><span class="val">${horizFull.toFixed(1)} mm</span></div>
-    <div class="row"><span class="lbl">Vertical (full brick)</span><span class="val">${vertFull.toFixed(1)} mm</span></div>
-    <div class="row"><span class="lbl">Stud span (H × V)</span><span class="note">${horizMm.toFixed(1)} × ${vertMm.toFixed(1)} mm</span></div>
-    <div class="row"><span class="lbl">Scale</span><span class="note">${S.pxPerMm.toFixed(2)} px/mm</span></div>
-    <div class="row"><span class="lbl">Calibration R²</span><span class="note">${cr.r2.toFixed(4)}</span></div>
-    <div class="row"><span class="lbl">Trials</span><span class="note">${TRIALS_PER_SPAN} per span × ${CAL_SPANS.length} spans</span></div>`;
+    <div class="section-title">Brick Dimensions (mean of ${MEAS_TRIALS} trials)</div>
+    <div class="row"><span class="lbl">Horizontal (full brick)</span><span class="val">${meanHF.toFixed(2)} ± ${stdHF.toFixed(3)} mm</span></div>
+    <div class="row"><span class="lbl">Vertical (full brick)</span><span class="val">${meanVF.toFixed(2)} ± ${stdVF.toFixed(3)} mm</span></div>
+    <div class="row"><span class="lbl">Stud span (H × V)</span><span class="note">${meanHS.toFixed(2)} × ${meanVS.toFixed(2)} mm</span></div>
+
+    <div class="section-title">Measurement Trials</div>
+    <table class="cal-table">
+      <tr><th></th><th>H full mm</th><th>V full mm</th><th>H span mm</th><th>V span mm</th></tr>
+      ${measRows}
+    </table>
+
+    <div class="section-title">Calibration Summary</div>
+    <div class="row"><span class="lbl">Scale</span><span class="note">${S.pxPerMm.toFixed(4)} px/mm</span></div>
+    <div class="row"><span class="lbl">Fit</span><span class="note">y = ${cr.fit.m.toFixed(4)}x + ${cr.fit.b.toFixed(4)}</span></div>
+    <div class="row"><span class="lbl">R²</span><span class="note">${cr.r2.toFixed(6)}</span></div>
+
+    <div class="section-title">Calibration Trials (all data)</div>
+    <table class="cal-table">
+      <tr><th>Trial</th><th>Raw px</th><th>Measured mm</th><th>Deviation mm</th></tr>
+      ${calRows}
+    </table>
+
+    <div style="margin-top:.8rem">
+      <button class="btn btn-primary" onclick="downloadCSV()">Download CSV</button>
+      <button class="btn btn-primary" onclick="measureAgain()">Measure again (keep calibration)</button>
+      <button class="btn" onclick="reset()">Start over</button>
+    </div>`;
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function downloadCSV() {
+  const cr = S.calResult;
+  const rows = [];
+
+  // Section 1: Calibration summary
+  rows.push(['Section','Key','Value']);
+  rows.push(['Calibration','scale_px_per_mm', S.pxPerMm.toFixed(4)]);
+  rows.push(['Calibration','scale_mm_per_px', S.mmPerPx.toFixed(6)]);
+  rows.push(['Calibration','fit_slope', cr.fit.m.toFixed(6)]);
+  rows.push(['Calibration','fit_intercept', cr.fit.b.toFixed(6)]);
+  rows.push(['Calibration','r_squared', cr.r2.toFixed(6)]);
+  rows.push(['Calibration','cal_trials_per_span', TRIALS_PER_SPAN]);
+  rows.push(['Calibration','measurement_trials', MEAS_TRIALS]);
+  rows.push(['Calibration','axis', S.axis]);
+  rows.push([]);
+
+  // Section 2: Per-trial calibration raw data
+  rows.push(['Calibration Trials','known_mm','trial','raw_px','measured_mm','deviation_mm']);
+  CAL_SPANS.forEach(span => {
+    const pxTrials = S.calTrials[span];
+    pxTrials.forEach((px, t) => {
+      const mm = px / S.pxPerMm;
+      const dev = mm - span;
+      rows.push(['Calibration Trials', span.toFixed(2), t+1, px.toFixed(4), mm.toFixed(4), dev.toFixed(4)]);
+    });
+  });
+  rows.push([]);
+
+  // Section 3: Per-span calibration averages
+  rows.push(['Span Averages','known_mm','mean_raw_px','std_raw_px','mean_measured_mm','std_measured_mm','deviation_mm']);
+  CAL_SPANS.forEach((span) => {
+    const pxTrials = S.calTrials[span];
+    const mmTrials = pxTrials.map(px => px / S.pxPerMm);
+    rows.push([
+      'Span Averages', span.toFixed(2),
+      mean(pxTrials).toFixed(4), stddev(pxTrials).toFixed(4),
+      mean(mmTrials).toFixed(4), stddev(mmTrials).toFixed(4),
+      (mean(mmTrials) - span).toFixed(4)
+    ]);
+  });
+  rows.push([]);
+
+  // Section 4: Per-trial measurement data
+  rows.push(['Measurement Trials','trial','length_raw_px','width_raw_px',
+    'horiz_span_mm','vert_span_mm','horiz_full_mm','vert_full_mm']);
+  S.measTrials.forEach((t, i) => {
+    const lMm = t.lengthPx * S.mmPerPx;
+    const wMm = t.widthPx * S.mmPerPx;
+    const hSpan = S.measureAxis === 'x' ? lMm : wMm;
+    const vSpan = S.measureAxis === 'x' ? wMm : lMm;
+    const hRaw = S.measureAxis === 'x' ? t.lengthPx : t.widthPx;
+    const vRaw = S.measureAxis === 'x' ? t.widthPx : t.lengthPx;
+    rows.push(['Measurement Trials', i+1,
+      hRaw.toFixed(4), vRaw.toFixed(4),
+      hSpan.toFixed(4), vSpan.toFixed(4),
+      (hSpan + STUD_MM).toFixed(4), (vSpan + STUD_MM).toFixed(4)]);
+  });
+  rows.push([]);
+
+  // Section 5: Measurement averages
+  const horizMms = S.measTrials.map(t => {
+    const l = t.lengthPx * S.mmPerPx, w = t.widthPx * S.mmPerPx;
+    return S.measureAxis === 'x' ? l : w;
+  });
+  const vertMms = S.measTrials.map(t => {
+    const l = t.lengthPx * S.mmPerPx, w = t.widthPx * S.mmPerPx;
+    return S.measureAxis === 'x' ? w : l;
+  });
+  const horizFulls = horizMms.map(v => v + STUD_MM);
+  const vertFulls = vertMms.map(v => v + STUD_MM);
+
+  rows.push(['Measurement Averages','dimension','mean_span_mm','std_span_mm','mean_full_mm','std_full_mm']);
+  rows.push(['Measurement Averages','Horizontal',
+    mean(horizMms).toFixed(4), stddev(horizMms).toFixed(4),
+    mean(horizFulls).toFixed(4), stddev(horizFulls).toFixed(4)]);
+  rows.push(['Measurement Averages','Vertical',
+    mean(vertMms).toFixed(4), stddev(vertMms).toFixed(4),
+    mean(vertFulls).toFixed(4), stddev(vertFulls).toFixed(4)]);
+
+  // Build CSV string and trigger download
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'lego_measurement_data.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Measure again (keep calibration) ─────────────────────────────────────────
+function measureAgain() {
+  S.measTrialIdx = 0;
+  S.measTrials = [];
+  S.curLengthPx = null;
+  S.pending = [];
+  S.lines = S.lines.filter(l =>
+    l.color && l.color.startsWith('rgba(') && !l.color.startsWith('rgba(252') && !l.color.startsWith('rgba(129') && !l.color.startsWith('rgba(186')
+  );
+  document.getElementById('res').style.display = 'none';
+  redraw();
+  promptMeasTrial();
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -397,7 +625,7 @@ function reset() {
   document.getElementById('fi').value = '';
   S = { img: null, scale: 1, axis: 'x', lines: [], pending: [], step: 'upload',
         calSpanIdx: 0, calTrialIdx: 0, calTrials: {},
-        lengthPx: null, widthPx: null, measureAxis: 'x' };
+        measTrialIdx: 0, measTrials: [], curLengthPx: null, measureAxis: 'x' };
 }
 </script>
 </body>
